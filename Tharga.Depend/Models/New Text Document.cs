@@ -11,10 +11,12 @@ public class ProjectInfo
 {
     public string Name { get; set; } = default!;
     public string Path { get; set; } = default!;
+    public string? PackageId { get; set; } // Optional explicit ID
     public bool IsPackable { get; set; }
     public List<PackageReferenceInfo> PackageReferences { get; set; } = new();
     public List<ProjectReferenceInfo> ProjectReferences { get; set; } = new();
 }
+
 
 public class PackageReferenceInfo
 {

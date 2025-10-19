@@ -1,65 +1,50 @@
 ﻿using Tharga.Depend.Services;
 
-string inputPath = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
+var argsList = args.Select(a => a.ToLowerInvariant()).ToList();
+
+if (argsList.Contains("--help") || argsList.Contains("-h"))
+{
+    PrintHelp();
+    return;
+}
+
+string inputPath = args.FirstOrDefault(a => !a.StartsWith("-"))
+                   ?? Directory.GetCurrentDirectory();
 
 var projectService = new VisualStudioProjectService();
 var fileService = new FileListingService(projectService);
 
-if (File.Exists(inputPath) && Path.GetExtension(inputPath).Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+var repos = fileService.GetGitReposWithProjects(inputPath);
+
+if (argsList.Contains("--list"))
 {
-    var project = projectService.ParseProject(inputPath);
-
-    Console.WriteLine($"{project.Name} ({project.Path})");
-
-    if (project.PackageReferences.Any())
-    {
-        Console.WriteLine("  NuGet Packages:");
-        foreach (var pkg in project.PackageReferences)
-            Console.WriteLine($"    - {pkg.PackageId} ({pkg.Version})");
-    }
-
-    if (project.ProjectReferences.Any())
-    {
-        Console.WriteLine("  Project References:");
-        foreach (var proj in project.ProjectReferences)
-            Console.WriteLine($"    - {proj.RelativePath}");
-    }
+    var printer = new RepositoryPrinterService();
+    printer.Print(repos);
+}
+else if (argsList.Contains("--order"))
+{
+    var graphService = new DependencyGraphService();
+    var levels = graphService.CalculateDependencyLevels(repos);
+    var outputService = new DependencyOrderService();
+    outputService.Print(levels);
 }
 else
 {
-    var repos = fileService.GetGitReposWithProjects(inputPath);
+    PrintHelp();
+}
 
-    foreach (var repo in repos)
-    {
-        Console.WriteLine($"{repo.Name} ({repo.Path})");
+void PrintHelp()
+{
+    Console.WriteLine("""
+                      Usage:
+                        dotnet run -- <path> [--list | --order]
 
-        foreach (var project in repo.Projects)
-        {
-            Console.WriteLine($"- {project.Name} ({project.Path})");
+                      Arguments:
+                        <path>         The folder to scan or a .csproj file. Defaults to current directory.
 
-            Console.WriteLine($"- {project.Name} ({project.Path})");
-            if (project.IsPackable)
-            {
-                Console.WriteLine("  → Builds NuGet Package");
-            }
-
-            if (project.PackageReferences.Any())
-            {
-                Console.WriteLine("  NuGet Packages:");
-                foreach (var pkg in project.PackageReferences)
-                    Console.WriteLine($"    - {pkg.PackageId} ({pkg.Version})");
-            }
-
-            if (project.ProjectReferences.Any())
-            {
-                Console.WriteLine("  Project References:");
-                foreach (var proj in project.ProjectReferences)
-                    Console.WriteLine($"    - {proj.RelativePath}");
-            }
-
-            Console.WriteLine();
-        }
-
-        Console.WriteLine();
-    }
+                      Options:
+                        --list         Lists all git repositories and their projects with references.
+                        --order        Outputs NuGet-packable projects in build/update order by dependency.
+                        --help, -h     Shows this help message.
+                      """);
 }

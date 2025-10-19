@@ -2,7 +2,7 @@
   "profiles": {
     "Tharga.Depend": {
       "commandName": "Project",
-      "commandLineArgs": "C:\\dev"
+      "commandLineArgs": "C:\\dev --order"
     }
   }
 }

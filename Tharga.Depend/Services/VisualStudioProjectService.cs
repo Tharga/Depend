@@ -49,6 +49,9 @@ public class VisualStudioProjectService
             .Where(x => !string.IsNullOrWhiteSpace(x.RelativePath))
             .ToList();
 
+        project.PackageId = doc.Descendants(ns + "PackageId").FirstOrDefault()?.Value
+                            ?? project.Name;
+
         return project;
     }
 }
