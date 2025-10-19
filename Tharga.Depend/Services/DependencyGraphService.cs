@@ -64,4 +64,32 @@ public class DependencyGraphService
 
         return levelMap;
     }
+
+    public List<ProjectInfo> GetProjectDependencies(ProjectInfo project, List<ProjectInfo> allProjects)
+    {
+        var lookupById = allProjects.ToDictionary(p => p.PackageId, StringComparer.OrdinalIgnoreCase);
+        var lookupByPath = allProjects.ToDictionary(p => Path.GetFullPath(p.Path));
+
+        var result = new List<ProjectInfo>();
+
+        foreach (var pkg in project.PackageReferences)
+        {
+            if (lookupById.TryGetValue(pkg.PackageId, out var dep))
+            {
+                result.Add(dep);
+            }
+        }
+
+        foreach (var projRef in project.ProjectReferences)
+        {
+            var refPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(project.Path)!, projRef.RelativePath));
+            if (lookupByPath.TryGetValue(refPath, out var dep))
+            {
+                result.Add(dep);
+            }
+        }
+
+        return result;
+    }
+
 }
