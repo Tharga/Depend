@@ -18,28 +18,46 @@ public class FileListingService
         if (!Directory.Exists(rootPath))
             return result;
 
-        var gitRepos = Directory.EnumerateDirectories(rootPath, "*", SearchOption.AllDirectories)
-            .Where(dir => Directory.Exists(Path.Combine(dir, ".git")));
+        // Step 1: Find all Git repos (deepest first)
+        var allGitRepos = Directory
+            .EnumerateDirectories(rootPath, ".git", SearchOption.AllDirectories)
+            .Select(Path.GetDirectoryName)
+            .Where(path => path != null)
+            .Distinct()
+            .OrderByDescending(path => path!.Count(c => c == Path.DirectorySeparatorChar))
+            .ToList();
 
-        foreach (var repoPath in gitRepos)
+        var assignedProjects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var gitRepo in allGitRepos)
         {
-            var repo = new GitRepositoryInfo
-            {
-                Name = Path.GetFileName(repoPath),
-                Path = repoPath
-            };
+            // Only look for .csproj files not already claimed by inner repos
+            var projects = Directory.EnumerateFiles(gitRepo!, "*.csproj", SearchOption.AllDirectories)
+                .Where(p => !assignedProjects.Contains(p))
+                .ToList();
 
-            var projectFiles = Directory.EnumerateFiles(repoPath, "*.csproj", SearchOption.AllDirectories);
-
-            foreach (var projectFile in projectFiles)
+            if (!projects.Any())
             {
-                var project = _projectService.ParseProject(projectFile);
-                repo.Projects.Add(project);
+                // ✅ This repo contains no unique projects — skip it
+                continue;
             }
 
-            result.Add(repo);
+            var repoInfo = new GitRepositoryInfo
+            {
+                Name = Path.GetFileName(gitRepo),
+                Path = gitRepo!,
+                Projects = projects
+                    .Select(_projectService.ParseProject)
+                    .ToList()
+            };
+
+            foreach (var p in projects)
+                assignedProjects.Add(p);
+
+            result.Add(repoInfo);
         }
 
         return result;
     }
+
 }

@@ -20,6 +20,7 @@ if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
 
 bool isList = argsList.Contains("--list");
 bool isOrder = argsList.Contains("--order");
+bool isGitMode = argsList.Contains("--git");
 
 var projectIdIndex = argsList.IndexOf("--project");
 string? targetProjectId = null;
@@ -62,40 +63,48 @@ if (isList)
     }
     else
     {
-        printerService.Print(repos);
+        printerService.Print(repos, groupByGit: isGitMode);
     }
 }
 else if (isOrder)
 {
     var levels = graphService.CalculateDependencyLevels(repos);
 
-    if (!string.IsNullOrEmpty(targetProjectId))
+    if (isGitMode)
     {
-        var target = levels.Keys.FirstOrDefault(p =>
-            string.Equals(p.PackageId, targetProjectId, StringComparison.OrdinalIgnoreCase));
-
-        if (target == null)
-        {
-            Console.WriteLine($"⚠️ Target project '{targetProjectId}' not found in scanned repos.");
-            return;
-        }
-
-        // Filter only dependencies needed to build this project
-        var required = levels
-            .Where(kv => kv.Key.PackageId != target.PackageId)
-            .Where(kv => IsTransitiveDependency(kv.Key, target, graphService, levels))
-            .OrderBy(kv => kv.Value)
-            .ToList();
-
-        Console.WriteLine($"[?] Build order dependencies for: {target.PackageId}\n");
-        foreach (var (dep, level) in required)
-        {
-            Console.WriteLine($"[{level}] {dep.PackageId} ({dep.Path})");
-        }
+        var gitDepOrderService = new GitDependencyOrderService();
+        gitDepOrderService.Print(repos, graphService);
     }
     else
     {
-        orderService.Print(levels);
+        if (!string.IsNullOrEmpty(targetProjectId))
+        {
+            var target = levels.Keys.FirstOrDefault(p =>
+                string.Equals(p.PackageId, targetProjectId, StringComparison.OrdinalIgnoreCase));
+
+            if (target == null)
+            {
+                Console.WriteLine($"⚠️ Target project '{targetProjectId}' not found in scanned repos.");
+                return;
+            }
+
+            // Filter only dependencies needed to build this project
+            var required = levels
+                .Where(kv => kv.Key.PackageId != target.PackageId)
+                .Where(kv => IsTransitiveDependency(kv.Key, target, graphService, levels))
+                .OrderBy(kv => kv.Value)
+                .ToList();
+
+            Console.WriteLine($"[?] Build order dependencies for: {target.PackageId}\n");
+            foreach (var (dep, level) in required)
+            {
+                Console.WriteLine($"[{level}] {dep.PackageId} ({dep.Path})");
+            }
+        }
+        else
+        {
+            orderService.Print(levels);
+        }
     }
 }
 

@@ -16,22 +16,33 @@ public class VisualStudioProjectService
             Path = projectFilePath
         };
 
-        var isPackable = doc.Descendants(ns + "IsPackable")
-                .Select(x => x.Value?.Trim().ToLowerInvariant())
-                .FirstOrDefault() switch
-            {
-                "false" => false,
-                "true" => true,
-                _ => true // Default: SDK projects are packable unless stated otherwise
-            };
+        // Step 1: Explicit IsPackable
+        var rawIsPackable = doc.Descendants(ns + "IsPackable")
+            .Select(x => x.Value?.Trim().ToLowerInvariant())
+            .FirstOrDefault();
 
-        var hasPackageIdOrVersion = doc.Descendants()
-            .Any(x => x.Name.LocalName == "PackageId" || x.Name.LocalName == "Version");
+        var hasExplicitIsPackable = rawIsPackable is "true" or "false";
+        var isExplicitlyPackable = rawIsPackable == "true";
 
-        project.IsPackable = isPackable && hasPackageIdOrVersion;
+        // Step 2: Heuristic detection based on NuGet-related elements
+        var hasNugetMetadata = doc.Descendants()
+            .Any(x =>
+                x.Name.LocalName is "PackageId" or "Version" or "Authors" or "Company" or "Product" or "Description" or "PackageIconUrl" or "PackageProjectUrl" or "PackageReadmeFile");
 
-        // Existing parsing code...
+        // Step 3: Combine logic
+        var isPackable = hasExplicitIsPackable
+            ? isExplicitlyPackable
+            : hasNugetMetadata;
 
+        project.IsPackable = isPackable;
+
+        // Optional logging for inferred packable projects
+        if (!hasExplicitIsPackable && isPackable)
+        {
+            Console.WriteLine($"ℹ️  Project '{project.Name}' inferred as packable (based on NuGet metadata).");
+        }
+
+        // Package references
         project.PackageReferences = doc.Descendants(ns + "PackageReference")
             .Select(x => new PackageReferenceInfo
             {
@@ -41,6 +52,7 @@ public class VisualStudioProjectService
             .Where(x => !string.IsNullOrWhiteSpace(x.PackageId))
             .ToList();
 
+        // Project references
         project.ProjectReferences = doc.Descendants(ns + "ProjectReference")
             .Select(x => new ProjectReferenceInfo
             {
@@ -49,9 +61,10 @@ public class VisualStudioProjectService
             .Where(x => !string.IsNullOrWhiteSpace(x.RelativePath))
             .ToList();
 
+        // PackageId fallback
         project.PackageId = doc.Descendants(ns + "PackageId").FirstOrDefault()?.Value
                             ?? project.Name;
-
         return project;
     }
+
 }
