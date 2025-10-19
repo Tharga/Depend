@@ -4,6 +4,7 @@ using Tharga.Console.Consoles;
 using Tharga.Depend.ConsoleCommands;
 using Tharga.Depend.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Tharga.Depend.Models;
 
 //using var console = new ClientConsole();
 //var command = new RootCommandIoc(console);
@@ -61,9 +62,67 @@ switch (output)
         var response = repos
             .SelectMany(repo => repo.Projects
                 .SelectMany(project => project.Packages
+                    //.Where(z => !string.IsNullOrWhiteSpace(z.PackageId))
                     .Select(package => (Repo: repo, Project: project, Package: package))
                 )
             ).ToArray();
+
+        var allProjects = repos.SelectMany(r => r.Projects).ToList();
+
+        var packageIdToProject = allProjects
+            .Where(p => !string.IsNullOrWhiteSpace(p.PackageId))
+            .GroupBy(p => p.PackageId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase); // warning: handles duplicates naively
+
+        var projectDependencies = allProjects.ToDictionary(
+            project => project,
+            project =>
+            {
+                var deps = new List<ProjectInfo>();
+
+                foreach (var packageRef in project.Packages)
+                {
+                    if (string.IsNullOrWhiteSpace(packageRef.PackageId))
+                        continue;
+
+                    if (packageIdToProject.TryGetValue(packageRef.PackageId, out var depProject))
+                    {
+                        deps.Add(depProject);
+                    }
+                }
+
+                return deps;
+            });
+
+        var levelMap = new Dictionary<ProjectInfo, int>();
+        var remaining = new HashSet<ProjectInfo>(allProjects);
+
+        while (remaining.Any())
+        {
+            var ready = remaining
+                .Where(p => projectDependencies[p].All(dep => levelMap.ContainsKey(dep)))
+                .ToList();
+
+            if (!ready.Any())
+            {
+                Console.WriteLine("❌ Circular dependency detected.");
+                break;
+            }
+
+            foreach (var project in ready)
+            {
+                int level = projectDependencies[project].Select(dep => levelMap[dep]).DefaultIfEmpty(-1).Max() + 1;
+                levelMap[project] = level;
+                remaining.Remove(project);
+            }
+        }
+
+        foreach (var kv in levelMap
+                     .Where(x => !string.IsNullOrEmpty(x.Key.PackageId))
+                     .OrderBy(kv => kv.Value).ThenBy(kv => kv.Key.Name))
+        {
+            Console.WriteLine($"[{kv.Value}] {kv.Key.PackageId} ({kv.Key.Path})");
+        }
 
         //var packages = response
         //    .Where(x => !x.Project.Name.EndsWith("Tests"))
@@ -87,12 +146,12 @@ switch (output)
         ////{
         ////    Console.WriteLine(packageId);
         ////}
-        var related = response; //.Where(x => packageIds.Contains(x.Project.PackageId));
-        ////foreach (var item in response.OrderBy(x => x.Package.PackageId).ThenBy(x => x.Project.Name))
-        foreach (var item in related.OrderBy(x => x.Package.PackageId).ThenBy(x => x.Project.Name))
-        {
-            Console.WriteLine($"{item.Package.Name}\t{item.Project.Name}\t{item.Repo.Name}");
-        }
+        //var related = response; //.Where(x => packageIds.Contains(x.Project.PackageId));
+        //////foreach (var item in response.OrderBy(x => x.Package.PackageId).ThenBy(x => x.Project.Name))
+        //foreach (var item in related.OrderBy(x => x.Package.PackageId).ThenBy(x => x.Project.Name))
+        //{
+        //    Console.WriteLine($"{item.Package.Name}\t{item.Project.Name}\t{item.Repo.Name}");
+        //}
         break;
     default:
         throw new ArgumentOutOfRangeException(output, $"Unknown {nameof(output)} {output}.");

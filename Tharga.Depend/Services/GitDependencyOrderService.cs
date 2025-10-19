@@ -63,7 +63,7 @@ internal class ProjectService : IProjectService
             Path = projectFilePath,
             Name = name,
             PackageId = GetPackageId(doc, name),
-            Packages = projects.ToArray()
+            Packages = projects.Union(packages).ToArray()
         };
     }
 
