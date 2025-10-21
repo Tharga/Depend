@@ -1,6 +1,10 @@
 ﻿using System.Xml.Linq;
 using Tharga.Depend.Models;
-using Tharga.Depend.Services;
+
+public interface IProjectService
+{
+    Task<ProjectInfo> ParseProject(string projectFilePath);
+}
 
 internal class ProjectService : IProjectService
 {

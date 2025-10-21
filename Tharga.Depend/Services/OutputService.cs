@@ -1,26 +1,49 @@
 ﻿namespace Tharga.Depend.Services;
 
-internal class OutputService : IOutputService
+public interface IOutputService
 {
-    public void PrintHelp()
+    void WriteLine(string message, ConsoleColor color = ConsoleColor.Gray);
+    void Error(string message);
+    void Warning(string message);
+    void PrintHelp();
+}
+
+public class OutputService : IOutputService
+{
+    public void WriteLine(string message, ConsoleColor color = ConsoleColor.Gray)
     {
-        System.Console.WriteLine("""
-    Usage:
-      Tharga.Depend.exe <folder> [--list | --order] [--project <PackageId>]
+        var previous = Console.ForegroundColor;
+        Console.ForegroundColor = color;
+        Console.WriteLine(message);
+        Console.ForegroundColor = previous;
+    }
 
-    Arguments:
-      <folder>        Root folder containing Git repositories and projects.
+    public void Error(string message) => WriteLine(message, ConsoleColor.Red);
+    public void Warning(string message) => WriteLine(message, ConsoleColor.Yellow);
 
-    Options:
-      --list          Show projects and dependencies (default: full list).
-      --order         Show NuGet-packable build order by dependency.
-      --project <id>  Filter to show output related to a specific NuGet project.
-      --help, -h      Show this help message.
+   public void PrintHelp()
+   {
+       Console.WriteLine("""
+                         Usage:
+                           Tharga.Depend.exe <folder> [--output <list|dependency>] [--project <ProjectName>]
 
-    Examples:
-      Tharga.Depend.exe C:\dev --list
-      Tharga.Depend.exe C:\dev --order
-      Tharga.Depend.exe C:\dev --order --project Tharga.MongoDB
-    """);
+                         Arguments:
+                           <folder>             Root folder containing Git repositories and projects.
+
+                         Options:
+                           --output, -o         Output format. Values:
+                                                  list       - Show projects and their dependencies.
+                                                  dependency - Show NuGet-packable build order by dependency.
+                                                Default: list
+
+                           --project, -p        Filter results to a specific project by name.
+
+                           --help, -h           Show this help message.
+
+                         Examples:
+                           Tharga.Depend.exe C:\dev
+                           Tharga.Depend.exe C:\dev --output dependency
+                           Tharga.Depend.exe C:\dev --output dependency --project Tharga.MongoDB
+                         """);
     }
 }
