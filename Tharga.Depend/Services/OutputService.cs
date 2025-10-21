@@ -31,17 +31,20 @@ public class OutputService : IOutputService
                            <folder>                 Root folder containing Git repositories and projects.
 
                          Options:
-                           --output, -o             Output format. Values:
-                                                      list       - Show projects and their dependencies.
-                                                      dependency - Show NuGet-packable build order by dependency.
-                                                    Default: list
+                           --output, -o <mode>      Output structure:
+                                                      list         Grouped by repo (default)
+                                                      dependency   Ordered by build dependency
+
+                           --view, -v <view>        Output content level:
+                                                      default      Repos + projects (default)
+                                                      full         Repos + projects + packages
+                                                      repo-only    Only repos
+                                                      project-only Only projects
 
                            --project, -p            Filter results to a specific project by name.
 
                            --exclude, -x <pattern>  Exclude projects containing this text from output (e.g. ".Tests").
                            --only-packable, -n      Show only NuGet-packable projects (those with a PackageId).
-                           --project-only, -j       Only show project-level output (no git-repo headers).
-                           --verbose, -v            Include referenced packages in the output (NuGet/project dependencies).
 
                            --help, -h               Show this help message.
 

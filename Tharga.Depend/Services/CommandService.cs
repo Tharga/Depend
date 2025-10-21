@@ -4,7 +4,7 @@ namespace Tharga.Depend.Services;
 
 public interface ICommandService
 {
-    Task ExecuteAsync(string[] args);
+    Task<int> ExecuteAsync(string[] args);
 }
 
 public class CommandService : ICommandService
@@ -20,13 +20,13 @@ public class CommandService : ICommandService
         _pathService = pathService;
     }
 
-    public async Task ExecuteAsync(string[] args)
+    public async Task<int> ExecuteAsync(string[] args)
     {
         var argsList = args.ToList();
         if (argsList.Contains("--help") || argsList.Contains("-h"))
         {
             _output.PrintHelp();
-            return;
+            return 0;
         }
 
         var rootPath = _pathService.GetRootPath(argsList);
@@ -34,7 +34,7 @@ public class CommandService : ICommandService
         {
             _output.Error("❌ Please provide a valid folder path.");
             _output.PrintHelp();
-            return;
+            return 1;
         }
 
         var repos = await _gitRepoService.GetAsync(rootPath).ToArrayAsync();
@@ -43,51 +43,89 @@ public class CommandService : ICommandService
         WarnIfDuplicateProjectNames(repos);
 
         var outputType = GetOptionValue(argsList, "dependency", "--output", "-o");
+        var viewMode = GetOptionValue(argsList, "default", "--view", "-v");
         var projectName = GetOptionValue(argsList, "", "--project", "-p");
         var excludePattern = GetOptionValue(argsList, "", "--exclude", "-x");
         var onlyPackable = argsList.Contains("--only-packable") || argsList.Contains("-n");
-        var isVerbose = argsList.Contains("--verbose") || argsList.Contains("-v");
-        var isProjectOnly = argsList.Contains("--project-only") || argsList.Contains("-j");
 
         switch (outputType)
         {
             case "list":
-                PrintRepositoryList(repos, rootPath, projectName, excludePattern, onlyPackable, isVerbose, isProjectOnly);
+                PrintRepositoryList(repos, rootPath, projectName, excludePattern, onlyPackable, viewMode);
                 break;
 
             case "dependency":
-                PrintDependencyList(repos, projectName, excludePattern, onlyPackable, isVerbose, isProjectOnly);
+                PrintDependencyList(repos, projectName, excludePattern, onlyPackable, viewMode);
                 break;
 
             default:
-                throw new ArgumentOutOfRangeException(outputType, $"Unknown {nameof(outputType)} {outputType}.");
+                _output.Error($"Unknown output mode: {outputType}");
+                return 2;
         }
+
+        return 0;
     }
 
-    private void PrintRepositoryList(IEnumerable<GitRepositoryInfo> repos, string rootPath, string projectName, string excludePattern, bool onlyPackable, bool isVerbose, bool isProjectOnly)
+    private void PrintRepositoryList(
+        IEnumerable<GitRepositoryInfo> repos,
+        string rootPath,
+        string projectName,
+        string excludePattern,
+        bool onlyPackable,
+        string viewMode)
     {
-        foreach (var repo in repos.OrderBy(x => x.Name))
+        var showPackages = viewMode == "full";
+        var showProjects = viewMode is "default" or "full";
+        var showRepos = viewMode is not "project-only";
+
+        var allProjects = repos.SelectMany(r => r.Projects).ToList();
+
+        if (viewMode == "project-only")
         {
-            if (!string.IsNullOrEmpty(projectName) && repo.Projects.All(x => x.Name != projectName)) continue;
+            foreach (var project in allProjects
+                         .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
+                         .OrderBy(p => p.Name))
+            {
+                _output.WriteLine($"- {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
+            }
 
-            var filteredProjects = repo.Projects.Where(p => ShouldInclude(p, excludePattern, onlyPackable)).ToArray();
-            if (!filteredProjects.Any()) continue;
+            return;
+        }
 
-            if (!isProjectOnly)
+        foreach (var repo in repos.OrderBy(r => r.Name))
+        {
+            if (!string.IsNullOrEmpty(projectName) && repo.Projects.All(p => p.Name != projectName)) continue;
+
+            var filteredProjects = repo.Projects
+                .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
+                .ToList();
+
+            if (!filteredProjects.Any() && showProjects)
+                continue;
+
+            if (showRepos)
                 _output.WriteLine($"- {repo.Name} ({Path.GetRelativePath(rootPath, repo.Path)})", ConsoleColor.Green);
 
-            foreach (var project in filteredProjects.OrderBy(x => x.Name))
-            {
-                var indent = isProjectOnly ? "" : "  ";
-                _output.WriteLine($"{indent}- {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
+            if (!showProjects) continue;
 
-                if (isVerbose)
+            foreach (var project in filteredProjects.OrderBy(p => p.Name))
+            {
+                _output.WriteLine($"  - {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
+
+                if (showPackages)
                 {
                     var filteredPackages = project.Packages
-                        .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable));
+                        .Where(p => ShouldInclude(new ProjectInfo
+                        {
+                            Name = p.Name,
+                            PackageId = p.PackageId,
+                            Packages = [],
+                            Path = p.Path
+                        }, excludePattern, onlyPackable))
+                        .OrderBy(p => p.Name);
 
-                    foreach (var package in filteredPackages.OrderBy(x => x.Name))
-                        _output.WriteLine($"{indent}  - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
+                    foreach (var package in filteredPackages)
+                        _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
                 }
             }
         }
@@ -211,8 +249,17 @@ public class CommandService : ICommandService
         _output.WriteLine(""); // Add space after warning block
     }
 
-    private void PrintDependencyList(GitRepositoryInfo[] repos, string projectName, string excludePattern, bool onlyPackable, bool isVerbose, bool isProjectOnly)
+    private void PrintDependencyList(
+        GitRepositoryInfo[] repos,
+        string projectName,
+        string excludePattern,
+        bool onlyPackable,
+        string viewMode)
     {
+        var showPackages = viewMode == "full";
+        var showProjects = viewMode is "default" or "full";
+        var showRepos = viewMode is not "project-only";
+
         var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable);
 
         var orderedProjects = levelMap
@@ -226,18 +273,18 @@ public class CommandService : ICommandService
         if (hasRepoCycle)
             _output.Warning("⚠️ Circular Git repository dependency detected. Git-level ordering may be partial.");
 
-        if (isProjectOnly)
+        if (viewMode == "project-only")
         {
             foreach (var project in orderedProjects)
             {
                 var level = levelMap.GetValueOrDefault(project, -1);
                 _output.WriteLine($"- [{level}] {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
 
-                if (isVerbose)
+                if (showPackages)
                 {
                     foreach (var package in project.Packages
                                  .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable))
-                                 .OrderBy(x => x.Name))
+                                 .OrderBy(p => p.Name))
                     {
                         _output.WriteLine($"  - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
                     }
@@ -247,9 +294,6 @@ public class CommandService : ICommandService
             return;
         }
 
-        var printedRepos = new HashSet<GitRepositoryInfo>();
-
-        //foreach (var repo in repos.OrderBy(r => r.Name))
         foreach (var repo in repos
                      .Where(r => orderedProjects.Any(p => r.Projects.Any(rp => rp.Path == p.Path)))
                      .OrderBy(r => repoLevelMap.GetValueOrDefault(r, int.MaxValue))
@@ -259,24 +303,27 @@ public class CommandService : ICommandService
                 .Where(p => repo.Projects.Any(rp => rp.Name == p.Name && rp.Path == p.Path))
                 .ToList();
 
-            if (!repoProjects.Any())
+            if (!repoProjects.Any() && showProjects)
                 continue;
 
-            //_output.WriteLine($"- {repo.Name}", ConsoleColor.Green);
-            var repoLevel = repoLevelMap.GetValueOrDefault(repo, -1);
-            //_output.WriteLine($"- [{repoLevel}] {repo.Name}", ConsoleColor.Green);
-            _output.WriteLine($"- [{repoLevel}] {repo.Name.Replace('/', '\\')}", ConsoleColor.Green);
+            if (showRepos)
+            {
+                var repoLevel = repoLevelMap.GetValueOrDefault(repo, -1);
+                _output.WriteLine($"- [{repoLevel}] {repo.Name}", ConsoleColor.Green);
+            }
+
+            if (!showProjects) continue;
 
             foreach (var project in repoProjects)
             {
                 var level = levelMap.GetValueOrDefault(project, -1);
                 _output.WriteLine($"  - [{level}] {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
 
-                if (isVerbose)
+                if (showPackages)
                 {
                     foreach (var package in project.Packages
                                  .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable))
-                                 .OrderBy(x => x.Name))
+                                 .OrderBy(p => p.Name))
                     {
                         _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
                     }
@@ -284,6 +331,7 @@ public class CommandService : ICommandService
             }
         }
     }
+
 
     private void WarnIfDuplicateGitRepositories(GitRepositoryInfo[] repos)
     {
@@ -422,6 +470,80 @@ public class CommandService : ICommandService
         }
 
         return levelMap;
+    }
+
+    private Dictionary<GitRepositoryInfo, HashSet<GitRepositoryInfo>> BuildRepositoryDependencyGraph(GitRepositoryInfo[] repos)
+    {
+        var repoByProjectPath = repos
+            .SelectMany(r => r.Projects.Select(p => (Project: p, Repo: r)))
+            .ToDictionary(x => x.Project.Path, x => x.Repo, StringComparer.OrdinalIgnoreCase);
+
+        var graph = new Dictionary<GitRepositoryInfo, HashSet<GitRepositoryInfo>>();
+
+        foreach (var repo in repos)
+        {
+            var dependencies = new HashSet<GitRepositoryInfo>();
+
+            foreach (var project in repo.Projects)
+            {
+                foreach (var package in project.Packages)
+                {
+                    GitRepositoryInfo? depRepo = null;
+
+                    // Try path-based
+                    if (!string.IsNullOrWhiteSpace(package.Path)
+                        && repoByProjectPath.TryGetValue(package.Path, out depRepo)
+                        && depRepo != repo)
+                    {
+                        dependencies.Add(depRepo);
+                        continue;
+                    }
+
+                    // Try PackageId fallback
+                    if (!string.IsNullOrWhiteSpace(package.PackageId))
+                    {
+                        depRepo = repos.FirstOrDefault(r =>
+                            r.Projects.Any(p =>
+                                string.Equals(p.PackageId, package.PackageId, StringComparison.OrdinalIgnoreCase)
+                                && p.Path != project.Path));
+
+                        if (depRepo != null && depRepo != repo)
+                            dependencies.Add(depRepo);
+                    }
+                }
+            }
+
+            graph[repo] = dependencies;
+        }
+
+        return graph;
+    }
+
+    private void ShowRepositoryDependencies(GitRepositoryInfo[] repos, string targetRepoName)
+    {
+        var graph = BuildRepositoryDependencyGraph(repos);
+
+        var targetRepo = repos.FirstOrDefault(r =>
+            string.Equals(r.Name, targetRepoName, StringComparison.OrdinalIgnoreCase));
+
+        if (targetRepo == null)
+        {
+            _output.Warning($"⚠️ Repository not found: {targetRepoName}");
+            return;
+        }
+
+        var deps = graph.TryGetValue(targetRepo, out var set) ? set : null;
+        if (deps == null || deps.Count == 0)
+        {
+            _output.WriteLine($"{targetRepoName} has no Git repository dependencies.", ConsoleColor.Gray);
+            return;
+        }
+
+        _output.WriteLine($"{targetRepoName} depends on:", ConsoleColor.Cyan);
+        foreach (var dep in deps.OrderBy(x => x.Name))
+        {
+            _output.WriteLine($"  - {dep.Name}", ConsoleColor.Yellow);
+        }
     }
 
 }

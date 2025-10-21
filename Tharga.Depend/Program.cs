@@ -18,5 +18,5 @@ var provider = services.BuildServiceProvider();
 PathService.EnsureInUserPath();
 
 var commandService = provider.GetRequiredService<ICommandService>();
-await commandService.ExecuteAsync(args);
+return await commandService.ExecuteAsync(args);
 
