@@ -1,6 +1,6 @@
-﻿using Tharga.Depend.Services;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Tharga.Depend.Models;
+using Tharga.Depend.Services;
 
 var services = new ServiceCollection();
 services.AddTransient<IOutputService, OutputService>();

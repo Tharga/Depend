@@ -1,0 +1,9 @@
+{
+  "solution": "Tharga.Depend.sln",
+  "solutionFolder": null,
+  "mappings": {
+    "Tharga.": "../Toolkit/Console/Tharga./Tharga..csproj"
+  },
+  "restore": [],
+  "removeProjects": true
+}
