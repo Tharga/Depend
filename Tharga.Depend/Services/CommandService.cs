@@ -39,6 +39,8 @@ public class CommandService : ICommandService
 
         var repos = await _gitRepoService.GetAsync(rootPath).ToArrayAsync();
 
+        WarnIfDuplicateProjectNames(repos);
+
         var outputType = GetOptionValue(argsList, "dependency", "--output", "-o");
         var projectName = GetOptionValue(argsList, "", "--project", "-p");
         var excludePattern = GetOptionValue(argsList, "", "--exclude", "-x");
@@ -51,13 +53,46 @@ public class CommandService : ICommandService
                 break;
 
             case "dependency":
+                //var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable);
+
+                //foreach (var kv in levelMap
+                //             .Where(kv => ShouldInclude(kv.Key, excludePattern, onlyPackable))
+                //             .OrderBy(kv => kv.Value).ThenBy(kv => kv.Key.Name))
+                //{
+                //    _output.WriteLine($"[{kv.Value}] {kv.Key.Name}{FormatId(kv.Key.PackageId)}", ConsoleColor.Yellow);
+                //}
                 var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable);
 
-                foreach (var kv in levelMap
-                             .Where(kv => ShouldInclude(kv.Key, excludePattern, onlyPackable))
-                             .OrderBy(kv => kv.Value).ThenBy(kv => kv.Key.Name))
+                // Build a sorted list of dependency-ordered projects
+                var orderedProjects = levelMap
+                    .Where(kv => ShouldInclude(kv.Key, excludePattern, onlyPackable))
+                    .OrderBy(kv => kv.Value)
+                    .ThenBy(kv => kv.Key.Name)
+                    .Select(kv => kv.Key)
+                    .ToList();
+
+                foreach (var repo in repos.OrderBy(r => r.Name))
                 {
-                    _output.WriteLine($"[{kv.Value}] {kv.Key.Name}{FormatId(kv.Key.PackageId)}", ConsoleColor.Yellow);
+                    var repoProjects = orderedProjects
+                        .Where(p => repo.Projects.Any(rp => rp.Name == p.Name && rp.Path == p.Path))
+                        .ToList();
+
+                    if (!repoProjects.Any())
+                        continue;
+
+                    _output.WriteLine($"- {repo.Name}", ConsoleColor.Green);
+
+                    foreach (var project in repoProjects)
+                    {
+                        var level = levelMap.TryGetValue(project, out var lvl) ? lvl : -1;
+                        _output.WriteLine($"  - [{level}] {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
+
+                        foreach (var package in project.Packages
+                                     .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable)))
+                        {
+                            _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
+                        }
+                    }
                 }
 
                 break;
@@ -186,4 +221,27 @@ public class CommandService : ICommandService
 
         return true;
     }
+
+    private void WarnIfDuplicateProjectNames(GitRepositoryInfo[] repos)
+    {
+        var allProjects = repos.SelectMany(r => r.Projects).ToList();
+
+        var duplicates = allProjects
+            .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .ToList();
+
+        if (!duplicates.Any()) return;
+
+        _output.Warning("⚠️ Duplicate project names detected (same name in multiple locations):");
+        foreach (var group in duplicates)
+        {
+            _output.WriteLine($"  - Project: {group.Key}", ConsoleColor.Yellow);
+            foreach (var project in group)
+                _output.WriteLine($"    - {project.Path}", ConsoleColor.DarkGray);
+        }
+
+        _output.WriteLine(""); // Add space after warning block
+    }
+
 }
