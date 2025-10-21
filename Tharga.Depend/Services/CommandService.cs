@@ -54,7 +54,7 @@ public class CommandService : ICommandService
                 break;
 
             case "dependency":
-                var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable, isVerbose);
+                var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable);
 
                 // Build a sorted list of dependency-ordered projects
                 var orderedProjects = levelMap
@@ -77,7 +77,7 @@ public class CommandService : ICommandService
 
                     foreach (var project in repoProjects)
                     {
-                        var level = levelMap.TryGetValue(project, out var lvl) ? lvl : -1;
+                        var level = levelMap.GetValueOrDefault(project, -1);
                         _output.WriteLine($"  - [{level}] {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
 
                         if (isVerbose)
@@ -109,7 +109,7 @@ public class CommandService : ICommandService
 
             _output.WriteLine($"- {repo.Name} ({Path.GetRelativePath(rootPath, repo.Path)})", ConsoleColor.Green);
 
-            foreach (var project in filteredProjects)
+            foreach (var project in filteredProjects.OrderBy(x => x.Name))
             {
                 _output.WriteLine($"  - {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
 
@@ -118,14 +118,14 @@ public class CommandService : ICommandService
                     var filteredPackages = project.Packages
                         .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable));
 
-                    foreach (var package in filteredPackages)
+                    foreach (var package in filteredPackages.OrderBy(x => x.Name))
                         _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
                 }
             }
         }
     }
 
-    private static string FormatId(string? id) => string.IsNullOrEmpty(id) ? string.Empty : $" [{id}]";
+    private static string FormatId(string id) => string.IsNullOrEmpty(id) ? string.Empty : $" [{id}]";
 
     private static string GetOptionValue(List<string> argsList, string defaultValue, params string[] keys)
     {
@@ -137,7 +137,7 @@ public class CommandService : ICommandService
         return defaultValue;
     }
 
-    private Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos, string targetProject, string excludePattern, bool onlyPackable, bool isVerbose)
+    private Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos, string targetProject, string excludePattern, bool onlyPackable)
     {
         var allProjects = gitRepositoryInfos.SelectMany(r => r.Projects).ToList();
 
