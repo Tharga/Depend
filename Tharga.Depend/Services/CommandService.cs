@@ -47,6 +47,8 @@ public class CommandService : ICommandService
         var projectName = GetOptionValue(argsList, "", "--project", "-p");
         var excludePattern = GetOptionValue(argsList, "", "--exclude", "-x");
         var onlyPackable = argsList.Contains("--only-packable") || argsList.Contains("-n");
+        var showRepoDeps = argsList.Contains("--repo-deps") || argsList.Contains("-rd");
+        var showProjectDeps = argsList.Contains("--project-deps") || argsList.Contains("-pd");
 
         switch (outputType)
         {
@@ -55,7 +57,7 @@ public class CommandService : ICommandService
                 break;
 
             case "dependency":
-                PrintDependencyList(repos, projectName, excludePattern, onlyPackable, viewMode);
+                PrintDependencyList(repos, projectName, excludePattern, onlyPackable, viewMode, showRepoDeps, showProjectDeps);
                 break;
 
             default:
@@ -254,7 +256,9 @@ public class CommandService : ICommandService
         string projectName,
         string excludePattern,
         bool onlyPackable,
-        string viewMode)
+        string viewMode,
+        bool showRepoDeps,
+        bool showProjectDeps)
     {
         var showPackages = viewMode == "full";
         var showProjects = viewMode is "default" or "full";
@@ -291,6 +295,46 @@ public class CommandService : ICommandService
                 }
             }
 
+            if (showProjectDeps)
+            {
+                var projectDependencyGraph = BuildProjectDependencyGraph(repos, levelMap);
+
+                foreach (var project in orderedProjects)
+                {
+                    var level = levelMap.GetValueOrDefault(project, -1);
+                    _output.WriteLine($"- [{level}] {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
+
+                    if (projectDependencyGraph.TryGetValue(project, out var deps) && deps.Any())
+                    {
+                        foreach (var dep in deps
+                                     .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
+                                     .OrderBy(p => levelMap.GetValueOrDefault(p, int.MaxValue))
+                                     .ThenBy(p => p.Name))
+                        {
+                            var depLevel = levelMap.GetValueOrDefault(dep, -1);
+                            //_output.WriteLine($"  - [{depLevel}] {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
+                            _output.WriteLine($"  - {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
+                        }
+                    }
+
+                    if (showPackages)
+                    {
+                        foreach (var package in project.Packages
+                                     .Where(p => ShouldInclude(new ProjectInfo
+                                     {
+                                         Name = p.Name,
+                                         PackageId = p.PackageId,
+                                         Packages = [],
+                                         Path = p.Path
+                                     }, excludePattern, onlyPackable))
+                                     .OrderBy(p => p.Name))
+                        {
+                            _output.WriteLine($"  - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
+                        }
+                    }
+                }
+            }
+
             return;
         }
 
@@ -310,6 +354,22 @@ public class CommandService : ICommandService
             {
                 var repoLevel = repoLevelMap.GetValueOrDefault(repo, -1);
                 _output.WriteLine($"- [{repoLevel}] {repo.Name}", ConsoleColor.Green);
+
+                if (showRepoDeps)
+                {
+                    var graph = BuildRepositoryDependencyGraph(repos);
+
+                    if (graph.TryGetValue(repo, out var deps) && deps.Any())
+                    {
+                        foreach (var dep in deps
+                                     .OrderBy(r => repoLevelMap.GetValueOrDefault(r, int.MaxValue))
+                                     .ThenBy(r => r.Name))
+                        {
+                            var depLevel = repoLevelMap.GetValueOrDefault(dep, -1);
+                            _output.WriteLine($"  - {dep.Name}", ConsoleColor.DarkGreen);
+                        }
+                    }
+                }
             }
 
             if (!showProjects) continue;
@@ -318,6 +378,23 @@ public class CommandService : ICommandService
             {
                 var level = levelMap.GetValueOrDefault(project, -1);
                 _output.WriteLine($"  - [{level}] {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
+
+                if (showProjectDeps)
+                {
+                    var projectDependencyGraph = BuildProjectDependencyGraph(repos, levelMap);
+                    if (projectDependencyGraph.TryGetValue(project, out var deps) && deps.Any())
+                    {
+                        foreach (var dep in deps
+                                     .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
+                                     .OrderBy(p => levelMap.GetValueOrDefault(p, int.MaxValue))
+                                     .ThenBy(p => p.Name))
+                        {
+                            var depLevel = levelMap.GetValueOrDefault(dep, -1);
+                            //_output.WriteLine($"    - [{depLevel}] {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
+                            _output.WriteLine($"    - {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
+                        }
+                    }
+                }
 
                 if (showPackages)
                 {
@@ -490,7 +567,6 @@ public class CommandService : ICommandService
                 {
                     GitRepositoryInfo? depRepo = null;
 
-                    // Try path-based
                     if (!string.IsNullOrWhiteSpace(package.Path)
                         && repoByProjectPath.TryGetValue(package.Path, out depRepo)
                         && depRepo != repo)
@@ -499,7 +575,6 @@ public class CommandService : ICommandService
                         continue;
                     }
 
-                    // Try PackageId fallback
                     if (!string.IsNullOrWhiteSpace(package.PackageId))
                     {
                         depRepo = repos.FirstOrDefault(r =>
@@ -544,6 +619,32 @@ public class CommandService : ICommandService
         {
             _output.WriteLine($"  - {dep.Name}", ConsoleColor.Yellow);
         }
+    }
+
+    private Dictionary<ProjectInfo, List<ProjectInfo>> BuildProjectDependencyGraph(
+        GitRepositoryInfo[] repos,
+        Dictionary<ProjectInfo, int> levelMap)
+    {
+        var allProjects = repos.SelectMany(r => r.Projects).ToList();
+
+        var projectByName = allProjects
+            .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var graph = new Dictionary<ProjectInfo, List<ProjectInfo>>();
+
+        foreach (var project in allProjects)
+        {
+            var deps = project.Packages
+                .Where(p => projectByName.ContainsKey(p.Name))
+                .Select(p => projectByName[p.Name])
+                .Where(dep => dep.Path != project.Path) // avoid self
+                .ToList();
+
+            graph[project] = deps;
+        }
+
+        return graph;
     }
 
 }

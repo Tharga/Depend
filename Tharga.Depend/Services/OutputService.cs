@@ -44,14 +44,16 @@ public class OutputService : IOutputService
                            --project, -p            Filter results to a specific project by name.
 
                            --exclude, -x <pattern>  Exclude projects containing this text from output (e.g. ".Tests").
-                           --only-packable, -n      Show only NuGet-packable projects (those with a PackageId).
+                           --only-packable, -n      Show only NuGet-packable projects (projects with a PackageId).
+                           --repo-deps, -rd         Show Git repository dependencies under each repo (only for --output dependency).
+                           --project-deps, -pd      Show project dependencies under each project (only for --output dependency).
 
                            --help, -h               Show this help message.
 
                          Examples:
-                           Tharga.Depend.exe C:\dev
-                           Tharga.Depend.exe C:\dev --output dependency
-                           Tharga.Depend.exe C:\dev --output dependency --project Tharga.MongoDB
+                           depend C:\dev
+                           depend C:\dev --output dependency
+                           depend C:\dev --output dependency --project Tharga.MongoDB
                          """);
     }
 }
