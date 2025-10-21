@@ -45,23 +45,16 @@ public class CommandService : ICommandService
         var projectName = GetOptionValue(argsList, "", "--project", "-p");
         var excludePattern = GetOptionValue(argsList, "", "--exclude", "-x");
         var onlyPackable = argsList.Contains("--only-packable") || argsList.Contains("-n");
+        var isVerbose = argsList.Contains("--verbose") || argsList.Contains("-v");
 
         switch (outputType)
         {
             case "list":
-                PrintRepositoryList(repos, rootPath, projectName, excludePattern, onlyPackable);
+                PrintRepositoryList(repos, rootPath, projectName, excludePattern, onlyPackable, isVerbose);
                 break;
 
             case "dependency":
-                //var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable);
-
-                //foreach (var kv in levelMap
-                //             .Where(kv => ShouldInclude(kv.Key, excludePattern, onlyPackable))
-                //             .OrderBy(kv => kv.Value).ThenBy(kv => kv.Key.Name))
-                //{
-                //    _output.WriteLine($"[{kv.Value}] {kv.Key.Name}{FormatId(kv.Key.PackageId)}", ConsoleColor.Yellow);
-                //}
-                var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable);
+                var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable, isVerbose);
 
                 // Build a sorted list of dependency-ordered projects
                 var orderedProjects = levelMap
@@ -87,10 +80,13 @@ public class CommandService : ICommandService
                         var level = levelMap.TryGetValue(project, out var lvl) ? lvl : -1;
                         _output.WriteLine($"  - [{level}] {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
 
-                        foreach (var package in project.Packages
-                                     .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable)))
+                        if (isVerbose)
                         {
-                            _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
+                            foreach (var package in project.Packages
+                                         .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable)))
+                            {
+                                _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
+                            }
                         }
                     }
                 }
@@ -102,7 +98,7 @@ public class CommandService : ICommandService
         }
     }
 
-    private void PrintRepositoryList(IEnumerable<GitRepositoryInfo> repos, string rootPath, string projectName, string excludePattern, bool onlyPackable)
+    private void PrintRepositoryList(IEnumerable<GitRepositoryInfo> repos, string rootPath, string projectName, string excludePattern, bool onlyPackable, bool isVerbose)
     {
         foreach (var repo in repos.OrderBy(x => x.Name))
         {
@@ -117,11 +113,14 @@ public class CommandService : ICommandService
             {
                 _output.WriteLine($"  - {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
 
-                var filteredPackages = project.Packages
-                    .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable));
+                if (isVerbose)
+                {
+                    var filteredPackages = project.Packages
+                        .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable));
 
-                foreach (var package in filteredPackages)
-                    _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
+                    foreach (var package in filteredPackages)
+                        _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
+                }
             }
         }
     }
@@ -138,7 +137,7 @@ public class CommandService : ICommandService
         return defaultValue;
     }
 
-    private Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos, string targetProject, string excludePattern, bool onlyPackable)
+    private Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos, string targetProject, string excludePattern, bool onlyPackable, bool isVerbose)
     {
         var allProjects = gitRepositoryInfos.SelectMany(r => r.Projects).ToList();
 
