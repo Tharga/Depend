@@ -70,7 +70,7 @@ switch (output)
         //        )
         //    ).ToArray();
 
-        var levelMap = GetLevelMap(repos, null); //, projectName);
+        var levelMap = GetLevelMap(repos, projectName);
 
         foreach (var kv in levelMap
                      //.Where(x => !string.IsNullOrEmpty(x.Key.PackageId))
@@ -99,7 +99,7 @@ static string GetOptionValue(List<string> argsList, string defaultValue, params 
     return defaultValue;
 }
 
-Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos, string targetProjectId)
+Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos, string targetProject)
 {
     var allProjects = gitRepositoryInfos.SelectMany(r => r.Projects).ToList();
 
@@ -131,14 +131,16 @@ Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos,
     // ✅ Step 1: Resolve only dependencies for a target project if specified
     HashSet<ProjectInfo> relevantProjects;
 
-    if (!string.IsNullOrWhiteSpace(targetProjectId))
+    if (!string.IsNullOrWhiteSpace(targetProject))
     {
         var root = allProjects
-            .FirstOrDefault(p => string.Equals(p.Name, targetProjectId, StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(p => string.Equals(p.Name, targetProject, StringComparison.OrdinalIgnoreCase)
+            //|| p.Path.Contains(targetProject)
+            );
 
         if (root == null)
         {
-            Console.WriteLine($"⚠️ Project not found: {targetProjectId}");
+            Console.WriteLine($"⚠️ Project not found: {targetProject}");
             return new Dictionary<ProjectInfo, int>();
         }
 
