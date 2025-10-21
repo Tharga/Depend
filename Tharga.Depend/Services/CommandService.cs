@@ -41,18 +41,25 @@ public class CommandService : ICommandService
 
         var outputType = GetOptionValue(argsList, "dependency", "--output", "-o");
         var projectName = GetOptionValue(argsList, "", "--project", "-p");
+        var excludePattern = GetOptionValue(argsList, "", "--exclude", "-x");
+        var onlyPackable = argsList.Contains("--only-packable") || argsList.Contains("-n");
 
         switch (outputType)
         {
             case "list":
-                PrintRepositoryList(repos, rootPath, projectName);
+                PrintRepositoryList(repos, rootPath, projectName, excludePattern, onlyPackable);
                 break;
 
             case "dependency":
-                var levelMap = GetLevelMap(repos, projectName);
-                foreach (var kv in levelMap.OrderBy(kv => kv.Value).ThenBy(kv => kv.Key.Name))
-                    //_output.WriteLine($"[{kv.Value}] {kv.Key.Name}{FormatId(kv.Key.PackageId)} ({kv.Key.Path})", ConsoleColor.Cyan);
+                var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable);
+
+                foreach (var kv in levelMap
+                             .Where(kv => ShouldInclude(kv.Key, excludePattern, onlyPackable))
+                             .OrderBy(kv => kv.Value).ThenBy(kv => kv.Key.Name))
+                {
                     _output.WriteLine($"[{kv.Value}] {kv.Key.Name}{FormatId(kv.Key.PackageId)}", ConsoleColor.Yellow);
+                }
+
                 break;
 
             default:
@@ -60,17 +67,25 @@ public class CommandService : ICommandService
         }
     }
 
-    private void PrintRepositoryList(IEnumerable<GitRepositoryInfo> repos, string rootPath, string projectName)
+    private void PrintRepositoryList(IEnumerable<GitRepositoryInfo> repos, string rootPath, string projectName, string excludePattern, bool onlyPackable)
     {
         foreach (var repo in repos.OrderBy(x => x.Name))
         {
             if (!string.IsNullOrEmpty(projectName) && repo.Projects.All(x => x.Name != projectName)) continue;
 
+            var filteredProjects = repo.Projects.Where(p => ShouldInclude(p, excludePattern, onlyPackable)).ToArray();
+            if (!filteredProjects.Any()) continue;
+
             _output.WriteLine($"- {repo.Name} ({Path.GetRelativePath(rootPath, repo.Path)})", ConsoleColor.Green);
-            foreach (var project in repo.Projects)
+
+            foreach (var project in filteredProjects)
             {
                 _output.WriteLine($"  - {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
-                foreach (var package in project.Packages)
+
+                var filteredPackages = project.Packages
+                    .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable));
+
+                foreach (var package in filteredPackages)
                     _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
             }
         }
@@ -88,7 +103,7 @@ public class CommandService : ICommandService
         return defaultValue;
     }
 
-    private Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos, string? targetProject)
+    private Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos, string targetProject, string excludePattern, bool onlyPackable)
     {
         var allProjects = gitRepositoryInfos.SelectMany(r => r.Projects).ToList();
 
@@ -114,6 +129,10 @@ public class CommandService : ICommandService
                 _output.Warning($"⚠️ Project not found: {targetProject}");
                 return new Dictionary<ProjectInfo, int>();
             }
+
+            // Check if root project would be excluded from output
+            if (!ShouldInclude(root, excludePattern, onlyPackable))
+                _output.Warning($"⚠️ Project '{targetProject}' is filtered from output but still used for dependency resolution.");
 
             relevantProjects = new HashSet<ProjectInfo>();
             var stack = new Stack<ProjectInfo>();
@@ -155,5 +174,16 @@ public class CommandService : ICommandService
         }
 
         return dictionary;
+    }
+
+    private bool ShouldInclude(ProjectInfo project, string excludePattern, bool onlyPackable)
+    {
+        if (!string.IsNullOrWhiteSpace(excludePattern) && project.Name.Contains(excludePattern, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (onlyPackable && string.IsNullOrWhiteSpace(project.PackageId))
+            return false;
+
+        return true;
     }
 }

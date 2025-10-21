@@ -28,17 +28,20 @@ public class OutputService : IOutputService
                            Tharga.Depend.exe <folder> [--output <list|dependency>] [--project <ProjectName>]
 
                          Arguments:
-                           <folder>             Root folder containing Git repositories and projects.
+                           <folder>                 Root folder containing Git repositories and projects.
 
                          Options:
-                           --output, -o         Output format. Values:
-                                                  list       - Show projects and their dependencies.
-                                                  dependency - Show NuGet-packable build order by dependency.
-                                                Default: list
+                           --output, -o             Output format. Values:
+                                                      list       - Show projects and their dependencies.
+                                                      dependency - Show NuGet-packable build order by dependency.
+                                                    Default: list
 
-                           --project, -p        Filter results to a specific project by name.
+                           --project, -p            Filter results to a specific project by name.
 
-                           --help, -h           Show this help message.
+                           --exclude, -x <pattern>  Exclude projects containing this text from output (e.g. ".Tests").
+                           --only-packable, -n      Show only NuGet-packable projects (those with a PackageId).
+
+                           --help, -h               Show this help message.
 
                          Examples:
                            Tharga.Depend.exe C:\dev
