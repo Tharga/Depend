@@ -1,20 +1,9 @@
-﻿using Tharga.Console;
-using Tharga.Console.Commands;
-using Tharga.Console.Consoles;
-using Tharga.Depend.ConsoleCommands;
-using Tharga.Depend.Services;
+﻿using Tharga.Depend.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Tharga.Depend.Models;
 
-//using var console = new ClientConsole();
-//var command = new RootCommandIoc(console);
-////var command = new RootCommand(console);
-//command.RegisterCommand<DependencyCommands>();
-//var engine = new CommandEngine(command);
-//engine.Start(args);
-
 var services = new ServiceCollection();
-services.AddTransient<IHelpOutputService, HelpOutputService>();
+services.AddTransient<IOutputService, OutputService>();
 services.AddTransient<IGitRepositoryService, GitRepositoryService>();
 services.AddTransient<IProjectService, ProjectService>();
 
@@ -24,16 +13,15 @@ var argsList = args.ToList();
 
 if (argsList.Contains("--help") || argsList.Contains("-h"))
 {
-    provider.GetService<IHelpOutputService>().PrintHelp();
+    provider.GetService<IOutputService>().PrintHelp();
     return;
 }
 
-// Extract path (first non-option argument)
 var rootPath = argsList.FirstOrDefault(a => !a.StartsWith("-"));
 if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
 {
     Console.Error.WriteLine("❌ Please provide a valid folder path.");
-    provider.GetService<IHelpOutputService>().PrintHelp();
+    provider.GetService<IOutputService>().PrintHelp();
     return;
 }
 
@@ -62,23 +50,11 @@ switch (output)
         }
         break;
     case "dependency":
-        //var response = repos
-        //    .SelectMany(repo => repo.Projects
-        //        .SelectMany(project => project.Packages
-        //            //.Where(z => !string.IsNullOrWhiteSpace(z.PackageId))
-        //            .Select(package => (Repo: repo, Project: project, Package: package))
-        //        )
-        //    ).ToArray();
-
         var levelMap = GetLevelMap(repos, projectName);
 
-        foreach (var kv in levelMap
-                     //.Where(x => !string.IsNullOrEmpty(x.Key.PackageId))
-                     .OrderBy(kv => kv.Value).ThenBy(kv => kv.Key.Name))
+        foreach (var kv in levelMap.OrderBy(kv => kv.Value).ThenBy(kv => kv.Key.Name))
         {
-            //Console.WriteLine($"[{kv.Value}] {kv.Key.PackageId} ({kv.Key.Path})");
             Console.WriteLine($"[{kv.Value}] {kv.Key.Name}{(string.IsNullOrEmpty(kv.Key.PackageId) ? null : $" [{kv.Key.PackageId}]")} ({kv.Key.Path})");
-            //Console.WriteLine($"  - {package.Name}{(string.IsNullOrEmpty(package.PackageId) ? null : $" [{package.PackageId}]")}");
         }
 
         break;
@@ -104,7 +80,6 @@ Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos,
     var allProjects = gitRepositoryInfos.SelectMany(r => r.Projects).ToList();
 
     var packageIdToProject = allProjects
-        //.Where(p => !string.IsNullOrWhiteSpace(p.PackageId))
         .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
         .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
@@ -116,9 +91,6 @@ Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos,
 
             foreach (var packageRef in project.Packages)
             {
-                //if (string.IsNullOrWhiteSpace(packageRef.PackageId))
-                //    continue;
-
                 if (packageIdToProject.TryGetValue(packageRef.Name, out var depProject))
                 {
                     deps.Add(depProject);
@@ -128,15 +100,11 @@ Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos,
             return deps;
         });
 
-    // ✅ Step 1: Resolve only dependencies for a target project if specified
     HashSet<ProjectInfo> relevantProjects;
 
     if (!string.IsNullOrWhiteSpace(targetProject))
     {
-        var root = allProjects
-            .FirstOrDefault(p => string.Equals(p.Name, targetProject, StringComparison.OrdinalIgnoreCase)
-            //|| p.Path.Contains(targetProject)
-            );
+        var root = allProjects.FirstOrDefault(p => string.Equals(p.Name, targetProject, StringComparison.OrdinalIgnoreCase));
 
         if (root == null)
         {
@@ -165,11 +133,9 @@ Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos,
     }
     else
     {
-        // No filter – use all projects
         relevantProjects = new HashSet<ProjectInfo>(allProjects);
     }
 
-    // ✅ Step 2: Topological sort with level assignment
     var dictionary = new Dictionary<ProjectInfo, int>();
     var remaining = new HashSet<ProjectInfo>(relevantProjects);
 
