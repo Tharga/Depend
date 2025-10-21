@@ -9,10 +9,12 @@ public interface IGitRepositoryService
 internal class GitRepositoryService : IGitRepositoryService
 {
     private readonly IProjectService _projectService;
+    private readonly string _rootPath;
 
-    public GitRepositoryService(IProjectService projectService)
+    public GitRepositoryService(IProjectService projectService, string rootPath)
     {
         _projectService = projectService;
+        _rootPath = rootPath;
     }
 
     public async IAsyncEnumerable<GitRepositoryInfo> GetAsync(string rootPath)
@@ -58,37 +60,8 @@ internal class GitRepositoryService : IGitRepositoryService
     {
         try
         {
-            //var gitConfigPath = Path.Combine(repoPath, ".git", "config");
-            //if (File.Exists(gitConfigPath))
-            //{
-            //    var lines = File.ReadAllLines(gitConfigPath);
-
-            //    // Find a line that starts with "url ="
-            //    var urlLine = lines
-            //        .FirstOrDefault(l => l.TrimStart().StartsWith("url =", StringComparison.OrdinalIgnoreCase));
-
-            //    if (!string.IsNullOrWhiteSpace(urlLine))
-            //    {
-            //        var url = urlLine.Split('=')[1].Trim();
-
-            //        // Handle both HTTPS and SSH forms
-            //        // e.g. "https://github.com/Tharga/Toolkit.git"
-            //        // or    "git@github.com:Tharga/Toolkit.git"
-            //        var lastPart = url
-            //            .Replace('\\', '/')
-            //            .Split(['/', ':'], StringSplitOptions.RemoveEmptyEntries)
-            //            .LastOrDefault();
-
-            //        if (!string.IsNullOrEmpty(lastPart))
-            //        {
-            //            // Remove trailing .git if present
-            //            return Path.GetFileNameWithoutExtension(lastPart);
-            //        }
-            //    }
-            //}
-
-            // Fallback to folder name
-            return new DirectoryInfo(repoPath).Name;
+            var relative = Path.GetRelativePath(_rootPath, repoPath);
+            return relative.Replace(Path.DirectorySeparatorChar, '/'); // Consistent format
         }
         catch (Exception ex)
         {

@@ -40,6 +40,7 @@ public class OutputService : IOutputService
 
                            --exclude, -x <pattern>  Exclude projects containing this text from output (e.g. ".Tests").
                            --only-packable, -n      Show only NuGet-packable projects (those with a PackageId).
+                           --project-only, -j       Only show project-level output (no git-repo headers).
                            --verbose, -v            Include referenced packages in the output (NuGet/project dependencies).
 
                            --help, -h               Show this help message.

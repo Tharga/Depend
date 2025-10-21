@@ -81,7 +81,7 @@ internal class ProjectService : IProjectService
     private async Task<(string Name, string Path, bool Exists, string PackageId)> GetProjectName(string projectFilePath, string argRelativePath)
     {
         var dir = Path.GetDirectoryName(projectFilePath);
-        var fullProjectPath = Path.Combine(dir, argRelativePath);
+        var fullProjectPath = Path.GetFullPath(Path.Combine(dir!, argRelativePath));
         var exists = File.Exists(fullProjectPath);
 
         string packageId = null;
