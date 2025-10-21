@@ -127,7 +127,7 @@ public class CommandService : ICommandService
                         .OrderBy(p => p.Name);
 
                     foreach (var package in filteredPackages)
-                        _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
+                        _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
                 }
             }
         }
@@ -290,7 +290,7 @@ public class CommandService : ICommandService
                                  .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable))
                                  .OrderBy(p => p.Name))
                     {
-                        _output.WriteLine($"  - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
+                        _output.WriteLine($"  - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
                     }
                 }
             }
@@ -329,7 +329,7 @@ public class CommandService : ICommandService
                                      }, excludePattern, onlyPackable))
                                      .OrderBy(p => p.Name))
                         {
-                            _output.WriteLine($"  - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
+                            _output.WriteLine($"  - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
                         }
                     }
                 }
@@ -402,7 +402,7 @@ public class CommandService : ICommandService
                                  .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable))
                                  .OrderBy(p => p.Name))
                     {
-                        _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)}", ConsoleColor.DarkGray);
+                        _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
                     }
                 }
             }
