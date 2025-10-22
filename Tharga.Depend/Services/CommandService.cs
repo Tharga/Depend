@@ -1,4 +1,5 @@
-﻿using Tharga.Depend.Models;
+﻿using System.Runtime.Intrinsics.Arm;
+using Tharga.Depend.Models;
 
 namespace Tharga.Depend.Services;
 
@@ -34,20 +35,20 @@ public class CommandService : ICommandService
         var rootPath = _pathService.GetRootPath(argsList);
         if (rootPath == null)
         {
-            _output.Error("❌ Please provide a valid folder path.");
+            _output.Error("Error: Please provide a valid folder path.");
             _output.PrintHelp();
             return 1;
         }
 
-        //var repos = await _gitRepoService.GetAsync(rootPath).ToArrayAsync();
-        var repos = await _gitRepoService.GetAsync(rootPath).ToArrayAsync();
-        var latestPackageVersions = GetLatestPackageVersions(repos);
+        // Load all repositories
+        var allRepos = await _gitRepoService.GetAsync(rootPath).ToArrayAsync();
 
+        // Compute latest known package versions from all repos
+        var latestPackageVersions = GetLatestPackageVersions(allRepos);
 
-        //WarnIfDuplicateGitRepositories(repos);
-        WarnIfDuplicateProjectNames(repos);
-        //WarnIfProjectsUseOldPackageVersions(repos);
+        WarnIfDuplicateProjectNames(allRepos);
 
+        // Now parse CLI options
         var outputType = GetOptionValue(argsList, "dependency", "--output", "-o");
         var viewMode = GetOptionValue(argsList, "default", "--view", "-v");
         var projectName = GetOptionValue(argsList, "", "--project", "-p");
@@ -56,14 +57,19 @@ public class CommandService : ICommandService
         var showRepoDeps = argsList.Contains("--repo-deps") || argsList.Contains("-rd");
         var showProjectDeps = argsList.Contains("--project-deps") || argsList.Contains("-pd");
 
+        // Filter for display only if -p is specified
+        var displayRepos = string.IsNullOrWhiteSpace(projectName)
+            ? allRepos
+            : FilterReposByProject(allRepos, projectName);
+
         switch (outputType)
         {
             case "list":
-                PrintRepositoryList(repos, rootPath, projectName, excludePattern, onlyPackable, viewMode, latestPackageVersions);
+                PrintRepositoryList(displayRepos, rootPath, projectName, excludePattern, onlyPackable, viewMode, latestPackageVersions);
                 break;
 
             case "dependency":
-                PrintDependencyList(repos, projectName, excludePattern, onlyPackable, viewMode, showRepoDeps, showProjectDeps, latestPackageVersions);
+                PrintDependencyList(displayRepos, projectName, excludePattern, onlyPackable, viewMode, showRepoDeps, showProjectDeps, latestPackageVersions);
                 break;
 
             default:
@@ -72,6 +78,24 @@ public class CommandService : ICommandService
         }
 
         return 0;
+    }
+
+    private GitRepositoryInfo[] FilterReposByProject(GitRepositoryInfo[] allRepos, string projectName)
+    {
+        if (string.IsNullOrWhiteSpace(projectName))
+            return allRepos;
+
+        var matched = allRepos
+            .Where(r => r.Projects.Any(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
+
+        if (!matched.Any())
+        {
+            _output.Warning($"Warning: Project '{projectName}' not found. Displaying all repositories.");
+            return allRepos;
+        }
+
+        return matched;
     }
 
     private void PrintRepositoryList(IEnumerable<GitRepositoryInfo> repositories,
@@ -134,8 +158,7 @@ public class CommandService : ICommandService
                         .OrderBy(p => p.Name);
 
                     foreach (var package in filteredPackages)
-                        PrintPackageLine(package, latestVersions);
-                    //_output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
+                        PrintPackageLine(package, latestVersions, 4);
                 }
             }
         }
@@ -153,7 +176,12 @@ public class CommandService : ICommandService
         return defaultValue;
     }
 
-    private Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos, string targetProject, string excludePattern, bool onlyPackable)
+    private Dictionary<ProjectInfo, int> GetLevelMap(
+        GitRepositoryInfo[] gitRepositoryInfos,
+        string targetProject,
+        string excludePattern,
+        bool onlyPackable,
+        bool includeAllProjects)
     {
         var allProjects = gitRepositoryInfos.SelectMany(r => r.Projects).ToList();
 
@@ -171,18 +199,21 @@ public class CommandService : ICommandService
 
         HashSet<ProjectInfo> relevantProjects;
 
-        if (!string.IsNullOrWhiteSpace(targetProject))
+        if (!string.IsNullOrWhiteSpace(targetProject) && !includeAllProjects)
         {
-            var root = allProjects.FirstOrDefault(p => string.Equals(p.Name, targetProject, StringComparison.OrdinalIgnoreCase));
+            var root = allProjects.FirstOrDefault(p =>
+                string.Equals(p.Name, targetProject, StringComparison.OrdinalIgnoreCase));
             if (root == null)
             {
-                _output.Warning($"⚠️ Project not found: {targetProject}");
+                _output.Warning($"Warning: Project not found: {targetProject}");
                 return new Dictionary<ProjectInfo, int>();
             }
 
-            // Check if root project would be excluded from output
+            // Warn if root project is excluded from output
             if (!ShouldInclude(root, excludePattern, onlyPackable))
-                _output.Warning($"⚠️ Project '{targetProject}' is filtered from output but still used for dependency resolution.");
+            {
+                _output.Warning($"Warning: Project '{targetProject}' is filtered from output but still used for dependency resolution.");
+            }
 
             relevantProjects = new HashSet<ProjectInfo>();
             var stack = new Stack<ProjectInfo>();
@@ -208,16 +239,23 @@ public class CommandService : ICommandService
 
         while (remaining.Any())
         {
-            var ready = remaining.Where(p => projectDependencies[p].All(dep => dictionary.ContainsKey(dep))).ToList();
+            var ready = remaining
+                .Where(p => projectDependencies[p].All(dep => dictionary.ContainsKey(dep)))
+                .ToList();
+
             if (!ready.Any())
             {
-                _output.Error("❌ Circular dependency detected.");
+                _output.Error("Error: Circular dependency detected.");
                 break;
             }
 
             foreach (var project in ready)
             {
-                var level = projectDependencies[project].Select(dep => dictionary[dep]).DefaultIfEmpty(-1).Max() + 1;
+                var level = projectDependencies[project]
+                    .Select(dep => dictionary[dep])
+                    .DefaultIfEmpty(-1)
+                    .Max() + 1;
+
                 dictionary[project] = level;
                 remaining.Remove(project);
             }
@@ -259,19 +297,21 @@ public class CommandService : ICommandService
         _output.WriteLine(""); // Add space after warning block
     }
 
-    private void PrintDependencyList(GitRepositoryInfo[] repos,
+    private void PrintDependencyList(
+        GitRepositoryInfo[] repos,
         string projectName,
         string excludePattern,
         bool onlyPackable,
         string viewMode,
         bool showRepoDeps,
-        bool showProjectDeps, Dictionary<string, string> latestVersions)
+        bool showProjectDeps,
+        Dictionary<string, string> latestVersions)
     {
         var showPackages = viewMode == "full";
         var showProjects = viewMode is "default" or "full";
         var showRepos = viewMode is not "project-only";
 
-        var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable);
+        var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable, includeAllProjects: true);
 
         var orderedProjects = levelMap
             .Where(kv => ShouldInclude(kv.Key, excludePattern, onlyPackable))
@@ -281,8 +321,7 @@ public class CommandService : ICommandService
             .ToList();
 
         var repoLevelMap = GetRepositoryLevelMap(repos, out var hasRepoCycle);
-        if (hasRepoCycle)
-            _output.Warning("⚠️ Circular Git repository dependency detected. Git-level ordering may be partial.");
+        if (hasRepoCycle) _output.Warning("Circular Git repository dependency detected. Git-level ordering may be partial.");
 
         if (viewMode == "project-only")
         {
@@ -297,7 +336,7 @@ public class CommandService : ICommandService
                                  .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable))
                                  .OrderBy(p => p.Name))
                     {
-                        _output.WriteLine($"  - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
+                        PrintPackageLine(package, latestVersions, 2);
                     }
                 }
             }
@@ -336,7 +375,7 @@ public class CommandService : ICommandService
                                      }, excludePattern, onlyPackable))
                                      .OrderBy(p => p.Name))
                         {
-                            _output.WriteLine($"  - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
+                            PrintPackageLine(package, latestVersions, 2);
                         }
                     }
                 }
@@ -410,8 +449,7 @@ public class CommandService : ICommandService
                                  .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable))
                                  .OrderBy(p => p.Name))
                     {
-                        PrintPackageLine(package, latestVersions);
-                        //_output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
+                        PrintPackageLine(package, latestVersions, 4);
                     }
                 }
             }
@@ -520,10 +558,10 @@ public class CommandService : ICommandService
         if (cycles.Any())
         {
             hasCycle = true;
-            _output.Warning("⚠️ Circular Git repository dependency detected:");
+            _output.Warning("Circular Git repository dependency detected:");
             foreach (var cycle in cycles)
             {
-                var pathString = string.Join(" → ", cycle.Select(r => r.Name));
+                var pathString = string.Join(" -> ", cycle.Select(r => r.Name));
                 _output.WriteLine($"   {pathString}", ConsoleColor.Yellow);
             }
         }
@@ -686,23 +724,40 @@ public class CommandService : ICommandService
     //    }
     //}
 
-    private void PrintPackageLine(PackageInfo package, Dictionary<string, string> latestVersions)
+    private void PrintPackageLine(PackageInfo package, Dictionary<string, string> latestVersions, int indentLevel = 4)
     {
+        var indent = new string(' ', indentLevel);
         var versionText = package.Version ?? "Project";
-        var line = $"    - {package.Name}{FormatId(package.PackageId)} ({versionText})";
+        var line = $"{indent}- {package.Name}{FormatId(package.PackageId)} ({versionText})";
 
         if (!string.IsNullOrWhiteSpace(package.Version) &&
-            latestVersions.TryGetValue(package.Name, out var latest) &&
-            string.Compare(package.Version, latest, StringComparison.OrdinalIgnoreCase) < 0)
+            latestVersions.TryGetValue(package.Name, out var latest))
         {
-            //_output.WriteLine(line, ConsoleColor.Red);
-            //_output.WriteLine($"      ⚠️ Newer version used: {latest}", ConsoleColor.DarkRed);
-            _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)} ({versionText} -> {latest})", ConsoleColor.Red);
+            try
+            {
+                // Parse both versions using NuGetVersion
+                var currentVersion = NuGet.Versioning.NuGetVersion.Parse(package.Version);
+                var latestVersion = NuGet.Versioning.NuGetVersion.Parse(latest);
+
+                if (currentVersion < latestVersion)
+                {
+                    // Show upgrade notice
+                    _output.WriteLine($"{indent}- {package.Name}{FormatId(package.PackageId)} ({versionText} -> {latest})", ConsoleColor.Red);
+                    return;
+                }
+            }
+            catch
+            {
+                // Fallback: in case version parsing fails (non-standard)
+                if (string.Compare(package.Version, latest, StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    _output.WriteLine($"{indent}- {package.Name}{FormatId(package.PackageId)} ({versionText} -> {latest})", ConsoleColor.Red);
+                    return;
+                }
+            }
         }
-        else
-        {
-            _output.WriteLine(line, ConsoleColor.DarkGray);
-        }
+
+        _output.WriteLine(line, ConsoleColor.DarkGray);
     }
 
     private Dictionary<string, string> GetLatestPackageVersions(GitRepositoryInfo[] repos)
