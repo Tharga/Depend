@@ -1,5 +1,6 @@
 ﻿using Tharga.Depend.Models;
-using Tharga.Depend.Services;
+
+namespace Tharga.Depend.Services;
 
 public interface IGitRepositoryService
 {
@@ -9,12 +10,12 @@ public interface IGitRepositoryService
 internal class GitRepositoryService : IGitRepositoryService
 {
     private readonly IProjectService _projectService;
-    private readonly string _rootPath;
+    private readonly IOutputService _output;
 
-    public GitRepositoryService(IProjectService projectService, string rootPath)
+    public GitRepositoryService(IProjectService projectService, IOutputService output)
     {
         _projectService = projectService;
-        _rootPath = rootPath;
+        _output = output;
     }
 
     public async IAsyncEnumerable<GitRepositoryInfo> GetAsync(string rootPath)
@@ -41,11 +42,12 @@ internal class GitRepositoryService : IGitRepositoryService
             yield return new GitRepositoryInfo
             {
                 Path = repoPath,
-                Name = GetRepositoryName(repoPath),
+                Name = GetRepositoryName(rootPath, repoPath),
                 Projects = parsedProjects.ToArray(),
             };
         }
     }
+
 
     private async IAsyncEnumerable<ProjectInfo> GetParsedProjects(IEnumerable<string> projects)
     {
@@ -56,16 +58,16 @@ internal class GitRepositoryService : IGitRepositoryService
         }
     }
 
-    private string GetRepositoryName(string repoPath)
+    private string GetRepositoryName(string rootPath, string repoPath)
     {
         try
         {
-            var relative = Path.GetRelativePath(_rootPath, repoPath);
-            return relative.Replace(Path.DirectorySeparatorChar, '/'); // Consistent format
+            var relative = Path.GetRelativePath(rootPath, repoPath);
+            return relative.Replace(Path.DirectorySeparatorChar, '/');
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"⚠️ Could not resolve repository name for '{repoPath}': {ex.Message}");
+            _output.Error($"Could not resolve repository name for '{repoPath}': {ex.Message}");
             return new DirectoryInfo(repoPath).Name;
         }
     }

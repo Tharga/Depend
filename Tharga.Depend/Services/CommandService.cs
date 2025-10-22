@@ -29,6 +29,8 @@ public class CommandService : ICommandService
             return 0;
         }
 
+        _pathService.EnsureInUserPath();
+
         var rootPath = _pathService.GetRootPath(argsList);
         if (rootPath == null)
         {
@@ -69,13 +71,15 @@ public class CommandService : ICommandService
     }
 
     private void PrintRepositoryList(
-        IEnumerable<GitRepositoryInfo> repos,
+        IEnumerable<GitRepositoryInfo> repositories,
         string rootPath,
         string projectName,
         string excludePattern,
         bool onlyPackable,
         string viewMode)
     {
+        var repos = repositories.ToArray();
+
         var showPackages = viewMode == "full";
         var showProjects = viewMode is "default" or "full";
         var showRepos = viewMode is not "project-only";
@@ -297,7 +301,7 @@ public class CommandService : ICommandService
 
             if (showProjectDeps)
             {
-                var projectDependencyGraph = BuildProjectDependencyGraph(repos, levelMap);
+                var projectDependencyGraph = BuildProjectDependencyGraph(repos);
 
                 foreach (var project in orderedProjects)
                 {
@@ -311,7 +315,7 @@ public class CommandService : ICommandService
                                      .OrderBy(p => levelMap.GetValueOrDefault(p, int.MaxValue))
                                      .ThenBy(p => p.Name))
                         {
-                            var depLevel = levelMap.GetValueOrDefault(dep, -1);
+                            //var depLevel = levelMap.GetValueOrDefault(dep, -1);
                             //_output.WriteLine($"  - [{depLevel}] {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
                             _output.WriteLine($"  - {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
                         }
@@ -365,7 +369,8 @@ public class CommandService : ICommandService
                                      .OrderBy(r => repoLevelMap.GetValueOrDefault(r, int.MaxValue))
                                      .ThenBy(r => r.Name))
                         {
-                            var depLevel = repoLevelMap.GetValueOrDefault(dep, -1);
+                            //var depLevel = repoLevelMap.GetValueOrDefault(dep, -1);
+                            //_output.WriteLine($"  - [{depLevel}] {dep.Name}", ConsoleColor.DarkGreen);
                             _output.WriteLine($"  - {dep.Name}", ConsoleColor.DarkGreen);
                         }
                     }
@@ -381,7 +386,7 @@ public class CommandService : ICommandService
 
                 if (showProjectDeps)
                 {
-                    var projectDependencyGraph = BuildProjectDependencyGraph(repos, levelMap);
+                    var projectDependencyGraph = BuildProjectDependencyGraph(repos);
                     if (projectDependencyGraph.TryGetValue(project, out var deps) && deps.Any())
                     {
                         foreach (var dep in deps
@@ -389,7 +394,7 @@ public class CommandService : ICommandService
                                      .OrderBy(p => levelMap.GetValueOrDefault(p, int.MaxValue))
                                      .ThenBy(p => p.Name))
                         {
-                            var depLevel = levelMap.GetValueOrDefault(dep, -1);
+                            //var depLevel = levelMap.GetValueOrDefault(dep, -1);
                             //_output.WriteLine($"    - [{depLevel}] {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
                             _output.WriteLine($"    - {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
                         }
@@ -409,27 +414,26 @@ public class CommandService : ICommandService
         }
     }
 
+    //private void WarnIfDuplicateGitRepositories(GitRepositoryInfo[] repos)
+    //{
+    //    var duplicates = repos
+    //        .GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+    //        .Where(g => g.Count() > 1)
+    //        .ToList();
 
-    private void WarnIfDuplicateGitRepositories(GitRepositoryInfo[] repos)
-    {
-        var duplicates = repos
-            .GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
-            .Where(g => g.Count() > 1)
-            .ToList();
+    //    if (!duplicates.Any()) return;
 
-        if (!duplicates.Any()) return;
+    //    _output.Warning("⚠️ Duplicate Git repository names detected (likely cloned copies in different paths):");
 
-        _output.Warning("⚠️ Duplicate Git repository names detected (likely cloned copies in different paths):");
+    //    foreach (var group in duplicates)
+    //    {
+    //        _output.WriteLine($"  - Repo: {group.Key}", ConsoleColor.Yellow);
+    //        foreach (var repo in group.OrderBy(r => r.Path))
+    //            _output.WriteLine($"    - {repo.Path}", ConsoleColor.DarkGray);
+    //    }
 
-        foreach (var group in duplicates)
-        {
-            _output.WriteLine($"  - Repo: {group.Key}", ConsoleColor.Yellow);
-            foreach (var repo in group.OrderBy(r => r.Path))
-                _output.WriteLine($"    - {repo.Path}", ConsoleColor.DarkGray);
-        }
-
-        _output.WriteLine("");
-    }
+    //    _output.WriteLine("");
+    //}
 
     private Dictionary<GitRepositoryInfo, int> GetRepositoryLevelMap(GitRepositoryInfo[] repos, out bool hasCycle)
     {
@@ -451,11 +455,9 @@ public class CommandService : ICommandService
             {
                 foreach (var package in project.Packages)
                 {
-                    GitRepositoryInfo? depRepo = null;
-
                     // Prefer path-based lookup (project references)
                     if (!string.IsNullOrWhiteSpace(package.Path)
-                        && repoByProjectPath.TryGetValue(package.Path, out depRepo)
+                        && repoByProjectPath.TryGetValue(package.Path, out var depRepo)
                         && depRepo != repo)
                     {
                         dependencies.Add(depRepo);
@@ -565,10 +567,8 @@ public class CommandService : ICommandService
             {
                 foreach (var package in project.Packages)
                 {
-                    GitRepositoryInfo? depRepo = null;
-
                     if (!string.IsNullOrWhiteSpace(package.Path)
-                        && repoByProjectPath.TryGetValue(package.Path, out depRepo)
+                        && repoByProjectPath.TryGetValue(package.Path, out var depRepo)
                         && depRepo != repo)
                     {
                         dependencies.Add(depRepo);
@@ -594,36 +594,35 @@ public class CommandService : ICommandService
         return graph;
     }
 
-    private void ShowRepositoryDependencies(GitRepositoryInfo[] repos, string targetRepoName)
-    {
-        var graph = BuildRepositoryDependencyGraph(repos);
+    //private void ShowRepositoryDependencies(GitRepositoryInfo[] repos, string targetRepoName)
+    //{
+    //    var graph = BuildRepositoryDependencyGraph(repos);
 
-        var targetRepo = repos.FirstOrDefault(r =>
-            string.Equals(r.Name, targetRepoName, StringComparison.OrdinalIgnoreCase));
+    //    var targetRepo = repos.FirstOrDefault(r =>
+    //        string.Equals(r.Name, targetRepoName, StringComparison.OrdinalIgnoreCase));
 
-        if (targetRepo == null)
-        {
-            _output.Warning($"⚠️ Repository not found: {targetRepoName}");
-            return;
-        }
+    //    if (targetRepo == null)
+    //    {
+    //        _output.Warning($"⚠️ Repository not found: {targetRepoName}");
+    //        return;
+    //    }
 
-        var deps = graph.TryGetValue(targetRepo, out var set) ? set : null;
-        if (deps == null || deps.Count == 0)
-        {
-            _output.WriteLine($"{targetRepoName} has no Git repository dependencies.", ConsoleColor.Gray);
-            return;
-        }
+    //    var deps = graph.TryGetValue(targetRepo, out var set) ? set : null;
+    //    if (deps == null || deps.Count == 0)
+    //    {
+    //        _output.WriteLine($"{targetRepoName} has no Git repository dependencies.", ConsoleColor.Gray);
+    //        return;
+    //    }
 
-        _output.WriteLine($"{targetRepoName} depends on:", ConsoleColor.Cyan);
-        foreach (var dep in deps.OrderBy(x => x.Name))
-        {
-            _output.WriteLine($"  - {dep.Name}", ConsoleColor.Yellow);
-        }
-    }
+    //    _output.WriteLine($"{targetRepoName} depends on:", ConsoleColor.Cyan);
+    //    foreach (var dep in deps.OrderBy(x => x.Name))
+    //    {
+    //        _output.WriteLine($"  - {dep.Name}", ConsoleColor.Yellow);
+    //    }
+    //}
 
     private Dictionary<ProjectInfo, List<ProjectInfo>> BuildProjectDependencyGraph(
-        GitRepositoryInfo[] repos,
-        Dictionary<ProjectInfo, int> levelMap)
+        GitRepositoryInfo[] repos)
     {
         var allProjects = repos.SelectMany(r => r.Projects).ToList();
 

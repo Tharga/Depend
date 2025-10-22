@@ -1,6 +1,8 @@
 ﻿using System.Xml.Linq;
 using Tharga.Depend.Models;
 
+namespace Tharga.Depend.Services;
+
 public interface IProjectService
 {
     Task<ProjectInfo> ParseProject(string projectFilePath);
@@ -34,7 +36,7 @@ internal class ProjectService : IProjectService
             .Where(x => !string.IsNullOrWhiteSpace(x.RelativePath))
             .ToList();
 
-        var packages = await BuildPackageInfos(projectFilePath, packageReferences).ToArrayAsync();
+        var packages = BuildPackageInfos(packageReferences).ToArray();
         var projects = await BuildProjectInfos(projectFilePath, projectReferences).ToArrayAsync();
 
         return new ProjectInfo
@@ -46,7 +48,7 @@ internal class ProjectService : IProjectService
         };
     }
 
-    private async IAsyncEnumerable<PackageInfo> BuildPackageInfos(string projectFilePath, IEnumerable<PackageReferenceInfo> projectReferences)
+    private IEnumerable<PackageInfo> BuildPackageInfos(IEnumerable<PackageReferenceInfo> projectReferences)
     {
         foreach (var x in projectReferences)
         {
@@ -87,7 +89,6 @@ internal class ProjectService : IProjectService
         string packageId = null;
         if (exists)
         {
-            //TODO: Open to get the packageId
             var parsed = await ParseProject(fullProjectPath);
             packageId = parsed.PackageId;
         }
@@ -102,7 +103,7 @@ internal class ProjectService : IProjectService
 
         // Step 1: Explicit IsPackable
         var rawIsPackable = doc.Descendants(ns + "IsPackable")
-            .Select(x => x.Value?.Trim().ToLowerInvariant())
+            .Select(x => x.Value.Trim().ToLowerInvariant())
             .FirstOrDefault();
 
         var hasExplicitIsPackable = rawIsPackable is "true" or "false";
