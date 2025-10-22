@@ -39,10 +39,14 @@ public class CommandService : ICommandService
             return 1;
         }
 
+        //var repos = await _gitRepoService.GetAsync(rootPath).ToArrayAsync();
         var repos = await _gitRepoService.GetAsync(rootPath).ToArrayAsync();
+        var latestPackageVersions = GetLatestPackageVersions(repos);
+
 
         //WarnIfDuplicateGitRepositories(repos);
         WarnIfDuplicateProjectNames(repos);
+        //WarnIfProjectsUseOldPackageVersions(repos);
 
         var outputType = GetOptionValue(argsList, "dependency", "--output", "-o");
         var viewMode = GetOptionValue(argsList, "default", "--view", "-v");
@@ -55,11 +59,11 @@ public class CommandService : ICommandService
         switch (outputType)
         {
             case "list":
-                PrintRepositoryList(repos, rootPath, projectName, excludePattern, onlyPackable, viewMode);
+                PrintRepositoryList(repos, rootPath, projectName, excludePattern, onlyPackable, viewMode, latestPackageVersions);
                 break;
 
             case "dependency":
-                PrintDependencyList(repos, projectName, excludePattern, onlyPackable, viewMode, showRepoDeps, showProjectDeps);
+                PrintDependencyList(repos, projectName, excludePattern, onlyPackable, viewMode, showRepoDeps, showProjectDeps, latestPackageVersions);
                 break;
 
             default:
@@ -70,13 +74,12 @@ public class CommandService : ICommandService
         return 0;
     }
 
-    private void PrintRepositoryList(
-        IEnumerable<GitRepositoryInfo> repositories,
+    private void PrintRepositoryList(IEnumerable<GitRepositoryInfo> repositories,
         string rootPath,
         string projectName,
         string excludePattern,
         bool onlyPackable,
-        string viewMode)
+        string viewMode, Dictionary<string, string> latestVersions)
     {
         var repos = repositories.ToArray();
 
@@ -131,7 +134,8 @@ public class CommandService : ICommandService
                         .OrderBy(p => p.Name);
 
                     foreach (var package in filteredPackages)
-                        _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
+                        PrintPackageLine(package, latestVersions);
+                    //_output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
                 }
             }
         }
@@ -244,7 +248,7 @@ public class CommandService : ICommandService
 
         if (!duplicates.Any()) return;
 
-        _output.Warning("⚠️ Duplicate project names detected (same name in multiple locations):");
+        _output.Warning("Duplicate project names detected (same name in multiple locations):");
         foreach (var group in duplicates)
         {
             _output.WriteLine($"  - Project: {group.Key}", ConsoleColor.Yellow);
@@ -255,14 +259,13 @@ public class CommandService : ICommandService
         _output.WriteLine(""); // Add space after warning block
     }
 
-    private void PrintDependencyList(
-        GitRepositoryInfo[] repos,
+    private void PrintDependencyList(GitRepositoryInfo[] repos,
         string projectName,
         string excludePattern,
         bool onlyPackable,
         string viewMode,
         bool showRepoDeps,
-        bool showProjectDeps)
+        bool showProjectDeps, Dictionary<string, string> latestVersions)
     {
         var showPackages = viewMode == "full";
         var showProjects = viewMode is "default" or "full";
@@ -407,7 +410,8 @@ public class CommandService : ICommandService
                                  .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable))
                                  .OrderBy(p => p.Name))
                     {
-                        _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
+                        PrintPackageLine(package, latestVersions);
+                        //_output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)} ({package.Version ?? "Project"})", ConsoleColor.DarkGray);
                     }
                 }
             }
@@ -644,6 +648,75 @@ public class CommandService : ICommandService
         }
 
         return graph;
+    }
+
+    //private void WarnIfProjectsUseOldPackageVersions(GitRepositoryInfo[] repos)
+    //{
+    //    var allProjects = repos.SelectMany(r => r.Projects).ToList();
+
+    //    // Group by package name, collecting project + version info
+    //    var packageUsages = allProjects
+    //        .SelectMany(p => p.Packages.Select(pkg => (Project: p, Package: pkg)))
+    //        .Where(x => !string.IsNullOrWhiteSpace(x.Package.Name) && !string.IsNullOrWhiteSpace(x.Package.Version))
+    //        .GroupBy(x => x.Package.Name, StringComparer.OrdinalIgnoreCase);
+
+    //    foreach (var packageGroup in packageUsages)
+    //    {
+    //        var packageName = packageGroup.Key;
+
+    //        // Parse version objects and group by version
+    //        var versionGroups = packageGroup
+    //            .GroupBy(x => x.Package.Version)
+    //            .OrderByDescending(g => g.Key)
+    //            .ToList();
+
+    //        if (versionGroups.Count <= 1)
+    //            continue; // No version conflict
+
+    //        var latestVersion = versionGroups.First().Key;
+
+    //        foreach (var oldGroup in versionGroups.Skip(1))
+    //        {
+    //            var oldVersion = oldGroup.Key;
+    //            foreach (var usage in oldGroup)
+    //            {
+    //                _output.Warning($"- Project '{usage.Project.Name}' uses {packageName} {oldVersion} (latest known is {latestVersion}).");
+    //            }
+    //        }
+    //    }
+    //}
+
+    private void PrintPackageLine(PackageInfo package, Dictionary<string, string> latestVersions)
+    {
+        var versionText = package.Version ?? "Project";
+        var line = $"    - {package.Name}{FormatId(package.PackageId)} ({versionText})";
+
+        if (!string.IsNullOrWhiteSpace(package.Version) &&
+            latestVersions.TryGetValue(package.Name, out var latest) &&
+            string.Compare(package.Version, latest, StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            //_output.WriteLine(line, ConsoleColor.Red);
+            //_output.WriteLine($"      ⚠️ Newer version used: {latest}", ConsoleColor.DarkRed);
+            _output.WriteLine($"    - {package.Name}{FormatId(package.PackageId)} ({versionText} -> {latest})", ConsoleColor.Red);
+        }
+        else
+        {
+            _output.WriteLine(line, ConsoleColor.DarkGray);
+        }
+    }
+
+    private Dictionary<string, string> GetLatestPackageVersions(GitRepositoryInfo[] repos)
+    {
+        return repos
+            .SelectMany(r => r.Projects)
+            .SelectMany(p => p.Packages)
+            .Where(pkg => !string.IsNullOrWhiteSpace(pkg.Name) && !string.IsNullOrWhiteSpace(pkg.Version))
+            .GroupBy(pkg => pkg.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(pkg => pkg.Version).Max(),
+                StringComparer.OrdinalIgnoreCase
+            );
     }
 
 }
