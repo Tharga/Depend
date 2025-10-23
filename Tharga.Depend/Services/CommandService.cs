@@ -1,5 +1,4 @@
-﻿using System.Runtime.Intrinsics.Arm;
-using Tharga.Depend.Models;
+﻿using Tharga.Depend.Models;
 
 namespace Tharga.Depend.Services;
 
@@ -158,7 +157,9 @@ public class CommandService : ICommandService
                         .OrderBy(p => p.Name);
 
                     foreach (var package in filteredPackages)
-                        PrintPackageLine(package, latestVersions, 4);
+                    {
+                        PrintPackageLine(package, latestVersions);
+                    }
                 }
             }
         }
@@ -449,33 +450,13 @@ public class CommandService : ICommandService
                                  .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable))
                                  .OrderBy(p => p.Name))
                     {
-                        PrintPackageLine(package, latestVersions, 4);
+                        PrintPackageLine(package, latestVersions);
                     }
                 }
             }
         }
     }
 
-    //private void WarnIfDuplicateGitRepositories(GitRepositoryInfo[] repos)
-    //{
-    //    var duplicates = repos
-    //        .GroupBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
-    //        .Where(g => g.Count() > 1)
-    //        .ToList();
-
-    //    if (!duplicates.Any()) return;
-
-    //    _output.Warning("⚠️ Duplicate Git repository names detected (likely cloned copies in different paths):");
-
-    //    foreach (var group in duplicates)
-    //    {
-    //        _output.WriteLine($"  - Repo: {group.Key}", ConsoleColor.Yellow);
-    //        foreach (var repo in group.OrderBy(r => r.Path))
-    //            _output.WriteLine($"    - {repo.Path}", ConsoleColor.DarkGray);
-    //    }
-
-    //    _output.WriteLine("");
-    //}
 
     private Dictionary<GitRepositoryInfo, int> GetRepositoryLevelMap(GitRepositoryInfo[] repos, out bool hasCycle)
     {
