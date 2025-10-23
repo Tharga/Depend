@@ -1,60 +1,125 @@
-trigger:
-  branches:
-    include:
-      - main
+name: 0.0.$(Rev:r)
 
-pool:
-  vmImage: 'windows-latest'
+stages:
+  - stage: Build
+    displayName: 'Build and Pack'
+    jobs:
+      - job: BuildJob
+        displayName: 'Build & Test'
+        pool:
+          vmImage: 'windows-latest'
 
-variables:
-  buildConfiguration: 'Release'
-  outputFolder: '$(Build.ArtifactStagingDirectory)/output'
-  chocoPackageName: 'depend'
+        variables:
+          buildConfiguration: 'Release'
+          runtime: 'win-x64'
+          outputDir: '$(Build.ArtifactStagingDirectory)/output'
+          chocoDir: '$(Build.ArtifactStagingDirectory)/choco'
+          projectPath: 'Tharga.Depend/Tharga.Depend.csproj'
+          nuspecPath: 'Resources/choco/depend.nuspec'
+          exeName: 'depend.exe'
 
-steps:
-  - task: UseDotNet@2
-    inputs:
-      packageType: 'sdk'
-      version: '8.x.x'
+        steps:
+          - task: UseDotNet@2
+            displayName: 'Use .NET 9'
+            inputs:
+              version: 9.0.x
+              includePreviewVersions: false
 
-  - task: NuGetToolInstaller@1
+          - task: NuGetToolInstaller@1
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Restore packages'
-    inputs:
-      command: 'restore'
-      projects: '**/*.csproj'
+          - task: DotNetCoreCLI@2
+            displayName: 'Restore'
+            inputs:
+              command: 'restore'
+              projects: '**/*.csproj'
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Build solution'
-    inputs:
-      command: 'build'
-      arguments: '--configuration $(buildConfiguration)'
-      projects: '**/*.csproj'
+          - task: DotNetCoreCLI@2
+            displayName: 'Build'
+            inputs:
+              command: 'build'
+              projects: '**/*.csproj'
+              arguments: '--configuration $(buildConfiguration)'
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Publish app'
-    inputs:
-      command: 'publish'
-      publishWebProjects: false
-      projects: 'src/Tharga.Depend/Tharga.Depend.csproj'
-      arguments: '--configuration $(buildConfiguration) --output $(outputFolder) /p:PublishSingleFile=true /p:PublishTrimmed=true /p:SelfContained=true /p:Runtime=win-x64'
-      zipAfterPublish: false
+          - task: DotNetCoreCLI@2
+            displayName: 'Test'
+            inputs:
+              command: 'test'
+              projects: 'Tharga.Depend.Tests/Tharga.Depend.Tests.csproj'
+              arguments: '--configuration $(buildConfiguration)'
 
-  - task: PowerShell@2
-    displayName: 'Create Chocolatey .nupkg'
-    inputs:
-      targetType: 'inline'
-      script: |
-        choco install chocolatey --no-progress -y
-        cd choco
-        $version = "1.0.$env:BUILD_BUILDID"
-        choco pack depend.nuspec --version=$version --out="$(Build.ArtifactStagingDirectory)/choco"
-    condition: succeeded()
+          - task: DotNetCoreCLI@2
+            displayName: 'Publish EXE'
+            inputs:
+              command: 'publish'
+              publishWebProjects: false
+              projects: '$(projectPath)'
+              arguments: >
+                --configuration $(buildConfiguration)
+                --runtime $(runtime)
+                --self-contained true
+                /p:PublishSingleFile=true
+                /p:PublishTrimmed=true
+                --output $(outputDir)
+              zipAfterPublish: false
 
-  - task: PublishBuildArtifacts@1
-    displayName: 'Publish Artifacts'
-    inputs:
-      PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-      ArtifactName: 'drop'
-      publishLocation: 'Container'
+          - task: PowerShell@2
+            displayName: 'Create Chocolatey Package'
+            inputs:
+              targetType: 'inline'
+              script: |
+                choco install chocolatey --no-progress -y
+
+                $exe = Get-ChildItem "$(outputDir)" -Filter *.exe | Select-Object -First 1
+                if (-not $exe) {
+                  Write-Host "Looking for EXE in: $(outputDir)"
+                  Get-ChildItem "$(outputDir)" -Recurse
+                  throw "EXE not found in output directory: $(outputDir)"
+                }
+
+                $temp = "$(Build.ArtifactStagingDirectory)/choco-temp"
+                $tools = "$temp/tools"
+                New-Item -ItemType Directory -Path $tools -Force | Out-Null
+
+                Copy-Item $exe.FullName -Destination $tools
+
+                Copy-Item "$(nuspecPath)" "$temp/depend.nuspec"
+
+                Push-Location $temp
+                choco pack depend.nuspec --version "$(Build.BuildNumber)" --out "$(chocoDir)"
+                Pop-Location
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Artifacts'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'drop'
+              publishLocation: 'Container'
+
+  - stage: Release
+    displayName: 'Release to Chocolatey'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+    jobs:
+      - job: ReleaseJob
+        displayName: 'Push Chocolatey Package'
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Artifact from Build'
+            inputs:
+              buildType: 'current'
+              artifactName: 'drop'
+              downloadPath: '$(System.ArtifactsDirectory)'
+
+          - task: PowerShell@2
+            displayName: 'Push .nupkg to Chocolatey'
+            inputs:
+              targetType: 'inline'
+              script: |
+                choco install chocolatey --no-progress -y
+                $pkg = Get-ChildItem "$(System.ArtifactsDirectory)/drop/choco/*.nupkg" | Select-Object -First 1
+                if (-not $pkg) {
+                  throw "No .nupkg file found."
+                }
+                choco push $pkg.FullName --source https://push.chocolatey.org/ --api-key "$(CHOCOLATEY_API_KEY)"

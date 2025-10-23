@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package>
+  <metadata>
+    <id>depend</id>
+    <version>0.0.0</version> <!-- Overwritten by pipeline -->
+    <title>Depend</title>
+    <Authors>Daniel Bohlin</Authors>
+    <owners>Thargelion AB</owners>
+    <description>CLI tool to analyze project and NuGet dependencies.</description>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <tags>cli dotnet dependencies nuget analyzer</tags>
+  </metadata>
+  <files>
+    <file src="tools\*.exe" target="tools" />
+  </files>
+</package>
