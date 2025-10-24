@@ -43,7 +43,14 @@ jobs:
         run: dotnet restore
 
       - name: Build project
-        run: dotnet build --configuration ${{ env.BUILD_CONFIG }}
+        run: |
+          echo "Building version ${{ env.VERSION }}"
+          dotnet build ${{ env.PROJECT_PATH }} `
+            --configuration ${{ env.BUILD_CONFIG }} `
+            /p:Version=${{ env.VERSION }} `
+            /p:AssemblyVersion=${{ env.VERSION }} `
+            /p:FileVersion=${{ env.VERSION }} `
+            /p:InformationalVersion=${{ env.VERSION }}
 
       - name: Run tests
         run: dotnet test Tharga.Depend.Tests/Tharga.Depend.Tests.csproj --configuration ${{ env.BUILD_CONFIG }}
@@ -96,12 +103,17 @@ jobs:
 
       - name: Publish EXE
         run: |
+          echo "Publishing version ${{ env.VERSION }}"
           dotnet publish ${{ env.PROJECT_PATH }} `
             --configuration ${{ env.BUILD_CONFIG }} `
             --runtime ${{ env.RUNTIME }} `
             --self-contained true `
             /p:PublishSingleFile=true `
             /p:PublishTrimmed=true `
+            /p:Version=${{ env.VERSION }} `
+            /p:AssemblyVersion=${{ env.VERSION }} `
+            /p:FileVersion=${{ env.VERSION }} `
+            /p:InformationalVersion=${{ env.VERSION }} `
             --output "${{ env.OUTPUT_DIR }}"
 
       - name: Prepare LICENSE and VERIFICATION for Chocolatey
