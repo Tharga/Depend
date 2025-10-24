@@ -55,6 +55,8 @@ public class CommandService : ICommandService
         var onlyPackable = argsList.Contains("--only-packable") || argsList.Contains("-n");
         var showRepoDeps = argsList.Contains("--repo-deps") || argsList.Contains("-rd");
         var showProjectDeps = argsList.Contains("--project-deps") || argsList.Contains("-pd");
+        var showRepoUsages = argsList.Contains("--repo-usages") || argsList.Contains("-ru");
+        var showProjectUsages = argsList.Contains("--project-usages") || argsList.Contains("-pu");
 
         // Filter for display only if -p is specified
         var displayRepos = string.IsNullOrWhiteSpace(projectName)
@@ -64,11 +66,11 @@ public class CommandService : ICommandService
         switch (outputType)
         {
             case "list":
-                PrintRepositoryList(displayRepos, rootPath, projectName, excludePattern, onlyPackable, viewMode, latestPackageVersions);
+                PrintRepositoryList(displayRepos, projectName, excludePattern, onlyPackable, viewMode, showRepoDeps, showProjectDeps, showRepoUsages, showProjectUsages, latestPackageVersions);
                 break;
 
             case "dependency":
-                PrintDependencyList(displayRepos, projectName, excludePattern, onlyPackable, viewMode, showRepoDeps, showProjectDeps, latestPackageVersions);
+                PrintDependencyList(displayRepos, projectName, excludePattern, onlyPackable, viewMode, showRepoDeps, showProjectDeps, showRepoUsages, showProjectUsages, latestPackageVersions);
                 break;
 
             default:
@@ -97,13 +99,7 @@ public class CommandService : ICommandService
         return matched;
     }
 
-    private void PrintRepositoryList(IEnumerable<GitRepositoryInfo> repositories,
-        string rootPath,
-        string projectName,
-        string excludePattern,
-        bool onlyPackable,
-        string viewMode,
-        Dictionary<string, string> latestVersions)
+    private void PrintRepositoryList(IEnumerable<GitRepositoryInfo> repositories, string projectName, string excludePattern, bool onlyPackable, string viewMode, bool showRepoDeps, bool showProjectDeps, bool showRepoUsages, bool showProjectUsages, Dictionary<string, string> latestVersions)
     {
         var repos = repositories.ToArray();
 
@@ -111,82 +107,45 @@ public class CommandService : ICommandService
         var showProjects = viewMode is "default" or "full";
         var showRepos = viewMode is not "project-only";
 
-        var projectUsageCounts = GetProjectUsageCounts(repos);
-        var repoUsageCounts = GetRepositoryUsageCounts(repos, projectUsageCounts);
-
         var allProjects = repos.SelectMany(r => r.Projects).ToList();
 
+        //NOTE: Only show project level.
         if (viewMode == "project-only")
         {
-            foreach (var project in allProjects
-                         .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
-                         .OrderBy(p => p.Name))
+            foreach (var project in allProjects.Where(p => ShouldInclude(p, excludePattern, onlyPackable)).OrderBy(p => p.Name))
             {
-                var usageText = "";
-                if (!string.IsNullOrWhiteSpace(project.PackageId) && projectUsageCounts.TryGetValue(project.PackageId, out var count) && count > 0)
-                {
-                    usageText = $" (used by {count} project{(count > 1 ? "s" : "")})";
-                }
-
-                _output.WriteLine($"- {project.Name}{FormatId(project.PackageId)}{usageText}", ConsoleColor.Yellow);
+                PrintProjectLine(repos, project, 0);
+                PrintProjectDeps(repos, excludePattern, onlyPackable, showProjectDeps, project, 2);
+                PrintProjectUsages(project, repos, showProjectUsages, excludePattern, onlyPackable, 2);
             }
 
             return;
         }
 
+        //NOTE: Show repository level, with different options of projects and packages.
         foreach (var repo in repos.OrderBy(r => r.Name))
         {
             if (!string.IsNullOrEmpty(projectName) && repo.Projects.All(p => p.Name != projectName)) continue;
 
-            var filteredProjects = repo.Projects
-                .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
-                .ToList();
+            var filteredProjects = repo.Projects.Where(p => ShouldInclude(p, excludePattern, onlyPackable)).ToArray();
 
-            if (!filteredProjects.Any() && showProjects)
-                continue;
+            if (!filteredProjects.Any() && showProjects) continue;
 
             if (showRepos)
             {
-                //_output.WriteLine($"- {repo.Name} ({Path.GetRelativePath(rootPath, repo.Path)})", ConsoleColor.Green);
-                //_output.WriteLine($"- {repo.Name} ()", ConsoleColor.Green);
-                var repoUsageText = "";
-                if (repoUsageCounts.TryGetValue(repo, out var repoUsedCount) && repoUsedCount > 0)
-                {
-                    repoUsageText = $" (used by {repoUsedCount} project{(repoUsedCount > 1 ? "s" : "")})";
-                }
-
-                _output.WriteLine($"- {repo.Name}{repoUsageText}", ConsoleColor.Green);
+                PrintRepositoryLine(repos, repo);
+                PrintRepoDeps(repos, showRepoDeps, repo, 2);
+                PrintRepoUsages(repo, repos, showRepoUsages, 2);
             }
 
             if (!showProjects) continue;
 
             foreach (var project in filteredProjects.OrderBy(p => p.Name))
             {
-                var usageText = "";
-                if (!string.IsNullOrWhiteSpace(project.PackageId) && projectUsageCounts.TryGetValue(project.PackageId, out var count) && count > 0)
-                {
-                    usageText = $" (used by {count} project{(count > 1 ? "s" : "")})";
-                }
-
-                _output.WriteLine($"  - {project.Name}{FormatId(project.PackageId)}{usageText}", ConsoleColor.Yellow);
-
-                if (showPackages)
-                {
-                    var filteredPackages = project.Packages
-                        .Where(p => ShouldInclude(new ProjectInfo
-                        {
-                            Name = p.Name,
-                            PackageId = p.PackageId,
-                            Packages = [],
-                            Path = p.Path
-                        }, excludePattern, onlyPackable))
-                        .OrderBy(p => p.Name);
-
-                    foreach (var package in filteredPackages)
-                    {
-                        PrintPackageLine(package, latestVersions);
-                    }
-                }
+                PrintProjectLine(repos, project, 2);
+                PrintProjectDeps(repos, excludePattern, onlyPackable, showProjectDeps, project, 4);
+                PrintProjectUsages(project, repos, showProjectUsages, excludePattern, onlyPackable, 4);
+                PrintProjectPackages(project, latestVersions, excludePattern, onlyPackable, showPackages, 4);
             }
         }
     }
@@ -203,14 +162,9 @@ public class CommandService : ICommandService
         return defaultValue;
     }
 
-    private Dictionary<ProjectInfo, int> GetLevelMap(
-        GitRepositoryInfo[] gitRepositoryInfos,
-        string targetProject,
-        string excludePattern,
-        bool onlyPackable,
-        bool includeAllProjects)
+    private Dictionary<ProjectInfo, int> GetLevelMap(GitRepositoryInfo[] gitRepositoryInfos, string targetProject, string excludePattern, bool onlyPackable, bool includeAllProjects)
     {
-        var allProjects = gitRepositoryInfos.SelectMany(r => r.Projects).ToList();
+        var allProjects = gitRepositoryInfos.SelectMany(r => r.Projects).ToArray();
 
         var packageIdToProject = allProjects
             .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
@@ -221,7 +175,7 @@ public class CommandService : ICommandService
             project => project.Packages
                 .Where(p => packageIdToProject.ContainsKey(p.Name))
                 .Select(p => packageIdToProject[p.Name])
-                .ToList()
+                .ToArray()
         );
 
         HashSet<ProjectInfo> relevantProjects;
@@ -253,7 +207,9 @@ public class CommandService : ICommandService
                 if (!projectDependencies.TryGetValue(current, out var deps)) continue;
 
                 foreach (var dep in deps)
+                {
                     if (relevantProjects.Add(dep)) stack.Push(dep);
+                }
             }
         }
         else
@@ -318,27 +274,19 @@ public class CommandService : ICommandService
         {
             _output.WriteLine($"  - Project: {group.Key}", ConsoleColor.Yellow);
             foreach (var project in group)
+            {
                 _output.WriteLine($"    - {project.Path}", ConsoleColor.DarkGray);
+            }
         }
 
-        _output.WriteLine(""); // Add space after warning block
+        _output.WriteLine("");
     }
 
-    private void PrintDependencyList(GitRepositoryInfo[] repos,
-        string projectName,
-        string excludePattern,
-        bool onlyPackable,
-        string viewMode,
-        bool showRepoDeps,
-        bool showProjectDeps,
-        Dictionary<string, string> latestVersions)
+    private void PrintDependencyList(GitRepositoryInfo[] repos, string projectName, string excludePattern, bool onlyPackable, string viewMode, bool showRepoDeps, bool showProjectDeps, bool showRepoUsages, bool showProjectUsages, Dictionary<string, string> latestVersions)
     {
         var showPackages = viewMode == "full";
         var showProjects = viewMode is "default" or "full";
         var showRepos = viewMode is not "project-only";
-
-        var projectUsageCounts = GetProjectUsageCounts(repos);
-        var repoUsageCounts = GetRepositoryUsageCounts(repos, projectUsageCounts);
 
         var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable, includeAllProjects: true);
 
@@ -352,79 +300,21 @@ public class CommandService : ICommandService
         var repoLevelMap = GetRepositoryLevelMap(repos, out var hasRepoCycle);
         if (hasRepoCycle) _output.Warning("Circular Git repository dependency detected. Git-level ordering may be partial.");
 
+        //NOTE: Only show project level.
         if (viewMode == "project-only")
         {
             foreach (var project in orderedProjects)
             {
-                var usageText = "";
-                if (!string.IsNullOrWhiteSpace(project.PackageId) && projectUsageCounts.TryGetValue(project.PackageId, out var count) && count > 0)
-                {
-                    usageText = $" (used by {count} project{(count > 1 ? "s" : "")})";
-                }
-
                 var level = levelMap.GetValueOrDefault(project, -1);
-                _output.WriteLine($"- [{level}] {project.Name}{FormatId(project.PackageId)}{usageText}", ConsoleColor.Yellow);
-
-                if (showPackages)
-                {
-                    foreach (var package in project.Packages
-                                 .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable))
-                                 .OrderBy(p => p.Name))
-                    {
-                        PrintPackageLine(package, latestVersions, 2);
-                    }
-                }
-            }
-
-            if (showProjectDeps)
-            {
-                var projectDependencyGraph = BuildProjectDependencyGraph(repos);
-
-                foreach (var project in orderedProjects)
-                {
-                    var usageText = "";
-                    if (!string.IsNullOrWhiteSpace(project.PackageId) && projectUsageCounts.TryGetValue(project.PackageId, out var count) && count > 0)
-                    {
-                        usageText = $" (used by {count} project{(count > 1 ? "s" : "")})";
-                    }
-
-                    var level = levelMap.GetValueOrDefault(project, -1);
-                    _output.WriteLine($"- [{level}] {project.Name}{FormatId(project.PackageId)}{usageText}", ConsoleColor.Yellow);
-
-                    if (projectDependencyGraph.TryGetValue(project, out var deps) && deps.Any())
-                    {
-                        foreach (var dep in deps
-                                     .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
-                                     .OrderBy(p => levelMap.GetValueOrDefault(p, int.MaxValue))
-                                     .ThenBy(p => p.Name))
-                        {
-                            //var depLevel = levelMap.GetValueOrDefault(dep, -1);
-                            //_output.WriteLine($"  - [{depLevel}] {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
-                            _output.WriteLine($"  - {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
-                        }
-                    }
-
-                    if (showPackages)
-                    {
-                        foreach (var package in project.Packages
-                                     .Where(p => ShouldInclude(new ProjectInfo
-                                     {
-                                         Name = p.Name,
-                                         PackageId = p.PackageId,
-                                         Packages = [],
-                                         Path = p.Path
-                                     }, excludePattern, onlyPackable))
-                                     .OrderBy(p => p.Name))
-                        {
-                            PrintPackageLine(package, latestVersions, 2);
-                        }
-                    }
-                }
+                PrintProjectLine(repos, project, 0, level);
+                PrintProjectDeps(repos, excludePattern, onlyPackable, showProjectDeps, project, 4, levelMap);
+                PrintProjectUsages(project, repos, showProjectUsages, excludePattern, onlyPackable, 4);
             }
 
             return;
         }
 
+        //NOTE: Show repository level, with different options of projects and packages.
         foreach (var repo in repos
                      .Where(r => orderedProjects.Any(p => r.Projects.Any(rp => rp.Path == p.Path)))
                      .OrderBy(r => repoLevelMap.GetValueOrDefault(r, int.MaxValue))
@@ -440,30 +330,9 @@ public class CommandService : ICommandService
             if (showRepos)
             {
                 var repoLevel = repoLevelMap.GetValueOrDefault(repo, -1);
-                var repoUsageText = "";
-                if (repoUsageCounts.TryGetValue(repo, out var repoUsedCount) && repoUsedCount > 0)
-                {
-                    repoUsageText = $" (used by {repoUsedCount} project{(repoUsedCount > 1 ? "s" : "")})";
-                }
-
-                _output.WriteLine($"- [{repoLevel}] {repo.Name}{repoUsageText}", ConsoleColor.Green);
-
-                if (showRepoDeps)
-                {
-                    var graph = BuildRepositoryDependencyGraph(repos);
-
-                    if (graph.TryGetValue(repo, out var deps) && deps.Any())
-                    {
-                        foreach (var dep in deps
-                                     .OrderBy(r => repoLevelMap.GetValueOrDefault(r, int.MaxValue))
-                                     .ThenBy(r => r.Name))
-                        {
-                            //var depLevel = repoLevelMap.GetValueOrDefault(dep, -1);
-                            //_output.WriteLine($"  - [{depLevel}] {dep.Name}", ConsoleColor.DarkGreen);
-                            _output.WriteLine($"  - {dep.Name}", ConsoleColor.DarkGreen);
-                        }
-                    }
-                }
+                PrintRepositoryLine(repos, repo, repoLevel);
+                PrintRepoDeps(repos, showRepoDeps, repo, 2, repoLevelMap);
+                PrintRepoUsages(repo, repos, showRepoUsages, 2);
             }
 
             if (!showProjects) continue;
@@ -471,43 +340,89 @@ public class CommandService : ICommandService
             foreach (var project in repoProjects)
             {
                 var level = levelMap.GetValueOrDefault(project, -1);
-
-                var usageText = "";
-                if (!string.IsNullOrWhiteSpace(project.PackageId) && projectUsageCounts.TryGetValue(project.PackageId, out var count) && count > 0)
-                {
-                    usageText = $" (used by {count} project{(count > 1 ? "s" : "")})";
-                }
-
-                _output.WriteLine($"  - [{level}] {project.Name}{FormatId(project.PackageId)}{usageText}", ConsoleColor.Yellow);
-
-
-                if (showProjectDeps)
-                {
-                    var projectDependencyGraph = BuildProjectDependencyGraph(repos);
-                    if (projectDependencyGraph.TryGetValue(project, out var deps) && deps.Any())
-                    {
-                        foreach (var dep in deps
-                                     .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
-                                     .OrderBy(p => levelMap.GetValueOrDefault(p, int.MaxValue))
-                                     .ThenBy(p => p.Name))
-                        {
-                            //var depLevel = levelMap.GetValueOrDefault(dep, -1);
-                            //_output.WriteLine($"    - [{depLevel}] {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
-                            _output.WriteLine($"    - {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
-                        }
-                    }
-                }
-
-                if (showPackages)
-                {
-                    foreach (var package in project.Packages
-                                 .Where(p => ShouldInclude(new ProjectInfo { Name = p.Name, PackageId = p.PackageId, Packages = [], Path = p.Path }, excludePattern, onlyPackable))
-                                 .OrderBy(p => p.Name))
-                    {
-                        PrintPackageLine(package, latestVersions);
-                    }
-                }
+                PrintProjectLine(repos, project, 2, level);
+                PrintProjectDeps(repos, excludePattern, onlyPackable, showProjectDeps, project, 4, levelMap);
+                PrintProjectUsages(project, repos, showProjectUsages, excludePattern, onlyPackable, 4);
+                PrintProjectPackages(project, latestVersions, excludePattern, onlyPackable, showPackages, 4);
             }
+        }
+    }
+
+    private void PrintRepoDeps(GitRepositoryInfo[] repos, bool showRepoDeps, GitRepositoryInfo repo, int indentLevel = 2, Dictionary<GitRepositoryInfo, int> repoLevelMap = null)
+    {
+        if (!showRepoDeps) return;
+
+        var graph = BuildRepositoryDependencyGraph(repos);
+
+        if (graph.TryGetValue(repo, out var deps) && deps.Any())
+        {
+            var indent = new string(' ', indentLevel);
+            _output.WriteLine($"{indent}Referenced by:", ConsoleColor.Gray);
+
+            foreach (var dep in deps
+                         .OrderBy(r => repoLevelMap?.GetValueOrDefault(r, int.MaxValue))
+                         .ThenBy(r => r.Name))
+            {
+                _output.WriteLine($"{indent}- {dep.Name}", ConsoleColor.DarkGreen);
+            }
+        }
+    }
+
+    private void PrintRepoUsages(GitRepositoryInfo repo, GitRepositoryInfo[] repos, bool showRepoUsages, int indentLevel = 2)
+    {
+        if (!showRepoUsages) return;
+
+        var usageGraph = BuildRepositoryUsageGraph(repos);
+
+        if (!usageGraph.TryGetValue(repo, out var users) || !users.Any())
+            return;
+
+        var indent = new string(' ', indentLevel);
+        _output.WriteLine($"{indent}Used by:", ConsoleColor.Gray);
+
+        foreach (var userRepo in users.OrderBy(r => r.Name))
+        {
+            _output.WriteLine($"{indent}- {userRepo.Name}", ConsoleColor.DarkCyan);
+        }
+    }
+
+    private void PrintProjectDeps(GitRepositoryInfo[] repos, string excludePattern, bool onlyPackable, bool showProjectDeps, ProjectInfo project, int indentLevel = 4, Dictionary<ProjectInfo, int> levelMap = null)
+    {
+        if (!showProjectDeps) return;
+
+        var projectDependencyGraph = BuildProjectDependencyGraph(repos);
+        if (projectDependencyGraph.TryGetValue(project, out var deps) && deps.Any())
+        {
+            var indent = new string(' ', indentLevel);
+            _output.WriteLine($"{indent}Referenced by:", ConsoleColor.Gray);
+
+            foreach (var dep in deps
+                         .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
+                         .OrderBy(p => levelMap?.GetValueOrDefault(p, int.MaxValue))
+                         .ThenBy(p => p.Name))
+            {
+                _output.WriteLine($"{indent}- {dep.Name}{FormatId(dep.PackageId)}", ConsoleColor.DarkYellow);
+            }
+        }
+    }
+
+    private void PrintProjectUsages(ProjectInfo project, GitRepositoryInfo[] repos, bool showProjectUsages, string excludePattern, bool onlyPackable, int indentLevel = 4)
+    {
+        if (!showProjectUsages) return;
+
+        var usageGraph = BuildProjectUsageGraph(repos);
+
+        if (!usageGraph.TryGetValue(project, out var users) || !users.Any())
+            return;
+
+        var indent = new string(' ', indentLevel);
+        _output.WriteLine($"{indent}Used by:", ConsoleColor.Gray);
+
+        foreach (var user in users
+                     .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
+                     .OrderBy(p => p.Name))
+        {
+            _output.WriteLine($"{indent}- {user.Name}{FormatId(user.PackageId)}", ConsoleColor.DarkCyan);
         }
     }
 
@@ -670,8 +585,7 @@ public class CommandService : ICommandService
         return graph;
     }
 
-    private Dictionary<ProjectInfo, List<ProjectInfo>> BuildProjectDependencyGraph(
-        GitRepositoryInfo[] repos)
+    private Dictionary<ProjectInfo, List<ProjectInfo>> BuildProjectDependencyGraph(GitRepositoryInfo[] repos)
     {
         var allProjects = repos.SelectMany(r => r.Projects).ToList();
 
@@ -745,53 +659,125 @@ public class CommandService : ICommandService
             );
     }
 
-    private Dictionary<string, int> GetProjectUsageCounts(GitRepositoryInfo[] repos)
+    private void PrintProjectLine(GitRepositoryInfo[] repos, ProjectInfo project, int indentLevel = 0, int? level = null)
     {
-        var allProjects = repos.SelectMany(r => r.Projects).ToList();
+        var indent = new string(' ', indentLevel);
 
-        // Map PackageId → ProjectInfo (self)
-        var projectByPackageId = allProjects
-            .Where(p => !string.IsNullOrWhiteSpace(p.PackageId))
-            .ToDictionary(p => p.PackageId, StringComparer.OrdinalIgnoreCase);
+        // Build or reuse dependency graph
+        var dependencyGraph = BuildProjectDependencyGraph(repos);
+        var usageGraph = BuildProjectUsageGraph(repos);
 
-        // Count references
-        var usageCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var referencedCount = dependencyGraph.TryGetValue(project, out var deps)
+            ? deps.Count
+            : 0;
 
-        foreach (var project in allProjects)
-        {
-            foreach (var package in project.Packages)
-            {
-                if (string.IsNullOrWhiteSpace(package.PackageId)) continue;
+        var usedByCount = usageGraph.TryGetValue(project, out var usedBy)
+            ? usedBy.Count
+            : 0;
 
-                // If another project uses this package, count it
-                if (projectByPackageId.ContainsKey(package.PackageId))
+        // Combine counts
+        var usageParts = new List<string>();
+        if (referencedCount > 0)
+            usageParts.Add($"Referenced by {referencedCount}");
+        if (usedByCount > 0)
+            usageParts.Add($"used by {usedByCount}");
+
+        var usageText = usageParts.Any()
+            ? $" ({string.Join(", ", usageParts)} project{(referencedCount + usedByCount > 1 ? "s" : "")})"
+            : "";
+
+        var levelText = level != null ? $"[{level}] " : "";
+
+        _output.WriteLine($"{indent}- {levelText}{project.Name}{FormatId(project.PackageId)}{usageText}", ConsoleColor.Yellow);
+    }
+
+    private void PrintRepositoryLine(GitRepositoryInfo[] repos, GitRepositoryInfo repo, int? level = null)
+    {
+        var dependencyGraph = BuildRepositoryDependencyGraph(repos);
+        var usageGraph = BuildRepositoryUsageGraph(repos);
+
+        var referencesCount = dependencyGraph.TryGetValue(repo, out var deps)
+            ? deps.Count
+            : 0;
+
+        var usedByCount = usageGraph.TryGetValue(repo, out var users)
+            ? users.Count
+            : 0;
+
+        var usageParts = new List<string>();
+        if (referencesCount > 0)
+            usageParts.Add($"Referenced by {referencesCount}");
+        if (usedByCount > 0)
+            usageParts.Add($"used by {usedByCount}");
+
+        var usageText = usageParts.Any()
+            ? $" ({string.Join(", ", usageParts)} repo{(referencesCount + usedByCount > 1 ? "s" : "")})"
+            : "";
+
+        var prefix = level != null ? $"- [{level}] " : "- ";
+        _output.WriteLine($"{prefix}{repo.Name}{usageText}", ConsoleColor.Green);
+    }
+
+    private void PrintProjectPackages(ProjectInfo project, Dictionary<string, string> latestVersions, string excludePattern, bool onlyPackable, bool showPackages, int indentLevel = 2)
+    {
+        if (!showPackages) return;
+
+        var filteredPackages = project.Packages
+            .Where(p => ShouldInclude(
+                new ProjectInfo
                 {
-                    if (!usageCount.ContainsKey(package.PackageId))
-                        usageCount[package.PackageId] = 0;
+                    Name = p.Name,
+                    PackageId = p.PackageId,
+                    Packages = [],
+                    Path = p.Path
+                },
+                excludePattern,
+                onlyPackable))
+            .OrderBy(p => p.Name);
 
-                    usageCount[package.PackageId]++;
-                }
+        foreach (var package in filteredPackages)
+        {
+            PrintPackageLine(package, latestVersions, indentLevel);
+        }
+    }
+
+    private Dictionary<ProjectInfo, List<ProjectInfo>> BuildProjectUsageGraph(GitRepositoryInfo[] repos)
+    {
+        var deps = BuildProjectDependencyGraph(repos);
+        var usage = new Dictionary<ProjectInfo, List<ProjectInfo>>();
+
+        foreach (var kvp in deps)
+        {
+            var project = kvp.Key;
+            foreach (var dep in kvp.Value)
+            {
+                if (!usage.ContainsKey(dep))
+                    usage[dep] = new List<ProjectInfo>();
+
+                usage[dep].Add(project);
             }
         }
 
-        return usageCount;
+        return usage;
     }
 
-    private Dictionary<GitRepositoryInfo, int> GetRepositoryUsageCounts(GitRepositoryInfo[] repos, Dictionary<string, int> projectUsageCounts)
+    private Dictionary<GitRepositoryInfo, List<GitRepositoryInfo>> BuildRepositoryUsageGraph(GitRepositoryInfo[] repos)
     {
-        var repoUsage = new Dictionary<GitRepositoryInfo, int>();
+        var deps = BuildRepositoryDependencyGraph(repos);
+        var usage = new Dictionary<GitRepositoryInfo, List<GitRepositoryInfo>>();
 
-        foreach (var repo in repos)
+        foreach (var kvp in deps)
         {
-            // Sum of unique dependent projects across all projects in this repo
-            var totalUsage = repo.Projects
-                .Where(p => !string.IsNullOrWhiteSpace(p.PackageId))
-                .Select(p => projectUsageCounts.TryGetValue(p.PackageId, out var count) ? count : 0)
-                .Sum();
+            var repo = kvp.Key;
+            foreach (var dep in kvp.Value)
+            {
+                if (!usage.ContainsKey(dep))
+                    usage[dep] = new List<GitRepositoryInfo>();
 
-            repoUsage[repo] = totalUsage;
+                usage[dep].Add(repo);
+            }
         }
 
-        return repoUsage;
+        return usage;
     }
 }
