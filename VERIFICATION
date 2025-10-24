@@ -1,0 +1,12 @@
+VERIFICATION
+Verification is intended to assist the Chocolatey moderators and community in verifying that this package’s binary distribution is trustworthy.
+
+1. The executable (depend.exe) was built from source available at:
+   https://github.com/Tharga/Depend
+
+2. The maintainer (Daniel Bohlin) is the author and publisher of this software.
+
+3. The binary can be verified by cloning the repository and running:
+   dotnet publish Tharga.Depend/Tharga.Depend.csproj -c Release -r win-x64 --self-contained
+
+4. The resulting executable will match the binary distributed with this Chocolatey package.

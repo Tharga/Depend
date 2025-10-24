@@ -1,16 +1,29 @@
 <?xml version="1.0"?>
-<package>
-  <metadata>
-    <id>depend</id>
-    <version>0.0.0</version>
-    <title>Depend</title>
-    <authors>Daniel Bohlin</authors>
-    <owners>Thargelion AB</owners>
-    <description>CLI tool to analyze project and NuGet dependencies.</description>
-    <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <tags>cli dotnet dependencies nuget analyzer</tags>
-  </metadata>
-  <files>
-    <file src="tools\*.exe" target="tools" />
-  </files>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+	<metadata>
+		<id>depend</id>
+		<version>0.0.0</version>
+		<title>Depend</title>
+		<authors>Daniel Bohlin</authors>
+		<owners>Thargelion AB</owners>
+
+		<summary>Analyze and visualize dependencies between .NET projects and NuGet packages.</summary>
+		<description>Depend is a command-line tool that analyzes and visualizes dependencies across multiple .NET Git repositories. It helps developers identify outdated NuGet packages and determine the correct build or update order for projects.</description>
+
+		<projectUrl>https://github.com/Tharga/Depend</projectUrl>
+		<projectSourceUrl>https://github.com/Tharga/Depend</projectSourceUrl>
+		<licenseUrl>https://github.com/Tharga/Depend/blob/master/LICENSE</licenseUrl>
+		<iconUrl>https://raw.githubusercontent.com/Tharga/Depend/refs/heads/master/Resources/icon.png</iconUrl>
+		<requireLicenseAcceptance>false</requireLicenseAcceptance>
+		<releaseNotes>https://github.com/Tharga/Depend/releases</releaseNotes>
+		<docsUrl>https://github.com/Tharga/Depend/wiki</docsUrl>
+		<bugTrackerUrl>https://github.com/Tharga/Depend/issues</bugTrackerUrl>
+		<tags>cli dotnet dependencies nuget analyzer</tags>
+	</metadata>
+
+	<files>
+		<file src="tools\*.exe" target="tools" />
+		<file src="LICENSE.txt" target="tools" />
+		<file src="VERIFICATION.txt" target="tools" />
+	</files>
 </package>
