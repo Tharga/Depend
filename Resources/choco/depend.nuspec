@@ -2,9 +2,9 @@
 <package>
   <metadata>
     <id>depend</id>
-    <version>0.0.0</version> <!-- Overwritten by pipeline -->
+    <version>0.0.0</version>
     <title>Depend</title>
-    <Authors>Daniel Bohlin</Authors>
+    <authors>Daniel Bohlin</authors>
     <owners>Thargelion AB</owners>
     <description>CLI tool to analyze project and NuGet dependencies.</description>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
