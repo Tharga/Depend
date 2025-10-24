@@ -1,18 +1,16 @@
 name: Build, Test, and Release
 
 on:
-  # Run build + test automatically for PRs and commits
   push:
     branches:
       - master
   pull_request:
     branches:
       - master
-
-  # Allow manual release trigger from GitHub UI
   workflow_dispatch:
 
 env:
+  BASE_VERSION: '0.1'          # Base version for auto-increment (e.g., 0.1 -> 0.1.1, 0.1.2, etc.)
   DOTNET_VERSION: '9.0.x'
   BUILD_CONFIG: 'Release'
   RUNTIME: 'win-x64'
@@ -24,12 +22,12 @@ env:
   EXE_NAME: 'depend.exe'
 
 permissions:
-  contents: write    # Required for tagging and release creation
+  contents: write
   packages: write
 
 jobs:
   ci:
-    name: Build & Test
+    name: Build and Test
     runs-on: windows-latest
 
     steps:
@@ -51,21 +49,47 @@ jobs:
         run: dotnet test Tharga.Depend.Tests/Tharga.Depend.Tests.csproj --configuration ${{ env.BUILD_CONFIG }}
 
   release:
-    name: Manual Release (Chocolatey + GitHub)
+    name: Manual Release (Auto Incremented Version)
     runs-on: windows-latest
-    needs: ci   # ensure build/test succeeded first
-    if: github.event_name == 'workflow_dispatch'   # manual only
+    needs: ci
+    if: github.event_name == 'workflow_dispatch'
 
     steps:
-      - name: Checkout code
+      - name: Checkout full repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # required for git tagging
+          fetch-depth: 0  # Needed to access all git tags
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Determine Next Version
+        id: version
+        shell: pwsh
+        run: |
+          $base = "${{ env.BASE_VERSION }}"
+          $pattern = "^v$base\."
+          $tags = git tag --list | Where-Object { $_ -match $pattern }
+
+          if ($tags.Count -eq 0) {
+            $next = "$base.1"
+          } else {
+            $latest = ($tags | Sort-Object { [version]($_ -replace '^v', '') } | Select-Object -Last 1)
+            $parts = $latest -replace '^v', '' -split '\.'
+            $major,$minor,$patch = $parts
+            $nextPatch = [int]$patch + 1
+            $next = "$major.$minor.$nextPatch"
+          }
+
+          Write-Host "Next version: $next"
+          "VERSION=$next" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "version=$next" >> $env:GITHUB_OUTPUT
+
+      - name: Display Version Summary
+        run: |
+          echo "### Release version: v${{ steps.version.outputs.version }}" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Build
         run: dotnet build --configuration ${{ env.BUILD_CONFIG }}
@@ -104,8 +128,6 @@ jobs:
 
           $exe = Get-ChildItem "${{ env.OUTPUT_DIR }}" -Filter *.exe -Recurse | Where-Object { $_.Name -ieq "${{ env.EXE_NAME }}" } | Select-Object -First 1
           if (-not $exe) {
-            Write-Host "Looking for EXE in: ${{ env.OUTPUT_DIR }}"
-            Get-ChildItem "${{ env.OUTPUT_DIR }}" -Recurse
             throw "EXE not found"
           }
 
@@ -116,7 +138,7 @@ jobs:
           Copy-Item "${{ env.NUSPEC_PATH }}" "$temp/depend.nuspec"
 
           Push-Location $temp
-          choco pack depend.nuspec --version "${{ github.run_number }}" --out "${{ env.CHOCO_DIR }}"
+          choco pack depend.nuspec --version "${{ env.VERSION }}" --out "${{ env.CHOCO_DIR }}"
           Pop-Location
 
       - name: Push to Chocolatey
@@ -126,29 +148,25 @@ jobs:
         run: |
           choco install chocolatey --no-progress -y
           $pkg = Get-ChildItem "${{ env.CHOCO_DIR }}" -Filter *.nupkg | Select-Object -First 1
-          if (-not $pkg) {
-            throw "No .nupkg file found in $env:CHOCO_DIR"
-          }
+          if (-not $pkg) { throw "No .nupkg found" }
           Write-Host "Pushing package $($pkg.Name) to Chocolatey..."
           choco push $pkg.FullName --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY
 
       - name: Tag Git Repository
         shell: pwsh
         run: |
-          $version = "v${{ github.run_number }}"
+          $tag = "v${{ env.VERSION }}"
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git tag -a $version -m "Release $version"
-          git push origin $version
+          git tag -a $tag -m "Release $tag"
+          git push origin $tag
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: "Release v${{ github.run_number }}"
-          body: |
-            ## What's Changed
-            - Automated release created manually via GitHub Actions.
+          tag_name: v${{ env.VERSION }}
+          name: "Release v${{ env.VERSION }}"
+          generate_release_notes: true
           files: |
             ${{ env.CHOCO_DIR }}/*.nupkg
         env:
