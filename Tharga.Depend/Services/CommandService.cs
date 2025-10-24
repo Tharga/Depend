@@ -102,13 +102,17 @@ public class CommandService : ICommandService
         string projectName,
         string excludePattern,
         bool onlyPackable,
-        string viewMode, Dictionary<string, string> latestVersions)
+        string viewMode,
+        Dictionary<string, string> latestVersions)
     {
         var repos = repositories.ToArray();
 
         var showPackages = viewMode == "full";
         var showProjects = viewMode is "default" or "full";
         var showRepos = viewMode is not "project-only";
+
+        var projectUsageCounts = GetProjectUsageCounts(repos);
+        var repoUsageCounts = GetRepositoryUsageCounts(repos, projectUsageCounts);
 
         var allProjects = repos.SelectMany(r => r.Projects).ToList();
 
@@ -118,7 +122,13 @@ public class CommandService : ICommandService
                          .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
                          .OrderBy(p => p.Name))
             {
-                _output.WriteLine($"- {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
+                var usageText = "";
+                if (!string.IsNullOrWhiteSpace(project.PackageId) && projectUsageCounts.TryGetValue(project.PackageId, out var count) && count > 0)
+                {
+                    usageText = $" (used by {count} project{(count > 1 ? "s" : "")})";
+                }
+
+                _output.WriteLine($"- {project.Name}{FormatId(project.PackageId)}{usageText}", ConsoleColor.Yellow);
             }
 
             return;
@@ -136,13 +146,29 @@ public class CommandService : ICommandService
                 continue;
 
             if (showRepos)
-                _output.WriteLine($"- {repo.Name} ({Path.GetRelativePath(rootPath, repo.Path)})", ConsoleColor.Green);
+            {
+                //_output.WriteLine($"- {repo.Name} ({Path.GetRelativePath(rootPath, repo.Path)})", ConsoleColor.Green);
+                //_output.WriteLine($"- {repo.Name} ()", ConsoleColor.Green);
+                var repoUsageText = "";
+                if (repoUsageCounts.TryGetValue(repo, out var repoUsedCount) && repoUsedCount > 0)
+                {
+                    repoUsageText = $" (used by {repoUsedCount} project{(repoUsedCount > 1 ? "s" : "")})";
+                }
+
+                _output.WriteLine($"- {repo.Name}{repoUsageText}", ConsoleColor.Green);
+            }
 
             if (!showProjects) continue;
 
             foreach (var project in filteredProjects.OrderBy(p => p.Name))
             {
-                _output.WriteLine($"  - {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
+                var usageText = "";
+                if (!string.IsNullOrWhiteSpace(project.PackageId) && projectUsageCounts.TryGetValue(project.PackageId, out var count) && count > 0)
+                {
+                    usageText = $" (used by {count} project{(count > 1 ? "s" : "")})";
+                }
+
+                _output.WriteLine($"  - {project.Name}{FormatId(project.PackageId)}{usageText}", ConsoleColor.Yellow);
 
                 if (showPackages)
                 {
@@ -298,8 +324,7 @@ public class CommandService : ICommandService
         _output.WriteLine(""); // Add space after warning block
     }
 
-    private void PrintDependencyList(
-        GitRepositoryInfo[] repos,
+    private void PrintDependencyList(GitRepositoryInfo[] repos,
         string projectName,
         string excludePattern,
         bool onlyPackable,
@@ -311,6 +336,9 @@ public class CommandService : ICommandService
         var showPackages = viewMode == "full";
         var showProjects = viewMode is "default" or "full";
         var showRepos = viewMode is not "project-only";
+
+        var projectUsageCounts = GetProjectUsageCounts(repos);
+        var repoUsageCounts = GetRepositoryUsageCounts(repos, projectUsageCounts);
 
         var levelMap = GetLevelMap(repos, projectName, excludePattern, onlyPackable, includeAllProjects: true);
 
@@ -328,8 +356,14 @@ public class CommandService : ICommandService
         {
             foreach (var project in orderedProjects)
             {
+                var usageText = "";
+                if (!string.IsNullOrWhiteSpace(project.PackageId) && projectUsageCounts.TryGetValue(project.PackageId, out var count) && count > 0)
+                {
+                    usageText = $" (used by {count} project{(count > 1 ? "s" : "")})";
+                }
+
                 var level = levelMap.GetValueOrDefault(project, -1);
-                _output.WriteLine($"- [{level}] {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
+                _output.WriteLine($"- [{level}] {project.Name}{FormatId(project.PackageId)}{usageText}", ConsoleColor.Yellow);
 
                 if (showPackages)
                 {
@@ -348,8 +382,14 @@ public class CommandService : ICommandService
 
                 foreach (var project in orderedProjects)
                 {
+                    var usageText = "";
+                    if (!string.IsNullOrWhiteSpace(project.PackageId) && projectUsageCounts.TryGetValue(project.PackageId, out var count) && count > 0)
+                    {
+                        usageText = $" (used by {count} project{(count > 1 ? "s" : "")})";
+                    }
+
                     var level = levelMap.GetValueOrDefault(project, -1);
-                    _output.WriteLine($"- [{level}] {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
+                    _output.WriteLine($"- [{level}] {project.Name}{FormatId(project.PackageId)}{usageText}", ConsoleColor.Yellow);
 
                     if (projectDependencyGraph.TryGetValue(project, out var deps) && deps.Any())
                     {
@@ -400,7 +440,13 @@ public class CommandService : ICommandService
             if (showRepos)
             {
                 var repoLevel = repoLevelMap.GetValueOrDefault(repo, -1);
-                _output.WriteLine($"- [{repoLevel}] {repo.Name}", ConsoleColor.Green);
+                var repoUsageText = "";
+                if (repoUsageCounts.TryGetValue(repo, out var repoUsedCount) && repoUsedCount > 0)
+                {
+                    repoUsageText = $" (used by {repoUsedCount} project{(repoUsedCount > 1 ? "s" : "")})";
+                }
+
+                _output.WriteLine($"- [{repoLevel}] {repo.Name}{repoUsageText}", ConsoleColor.Green);
 
                 if (showRepoDeps)
                 {
@@ -425,7 +471,15 @@ public class CommandService : ICommandService
             foreach (var project in repoProjects)
             {
                 var level = levelMap.GetValueOrDefault(project, -1);
-                _output.WriteLine($"  - [{level}] {project.Name}{FormatId(project.PackageId)}", ConsoleColor.Yellow);
+
+                var usageText = "";
+                if (!string.IsNullOrWhiteSpace(project.PackageId) && projectUsageCounts.TryGetValue(project.PackageId, out var count) && count > 0)
+                {
+                    usageText = $" (used by {count} project{(count > 1 ? "s" : "")})";
+                }
+
+                _output.WriteLine($"  - [{level}] {project.Name}{FormatId(project.PackageId)}{usageText}", ConsoleColor.Yellow);
+
 
                 if (showProjectDeps)
                 {
@@ -456,7 +510,6 @@ public class CommandService : ICommandService
             }
         }
     }
-
 
     private Dictionary<GitRepositoryInfo, int> GetRepositoryLevelMap(GitRepositoryInfo[] repos, out bool hasCycle)
     {
@@ -617,33 +670,6 @@ public class CommandService : ICommandService
         return graph;
     }
 
-    //private void ShowRepositoryDependencies(GitRepositoryInfo[] repos, string targetRepoName)
-    //{
-    //    var graph = BuildRepositoryDependencyGraph(repos);
-
-    //    var targetRepo = repos.FirstOrDefault(r =>
-    //        string.Equals(r.Name, targetRepoName, StringComparison.OrdinalIgnoreCase));
-
-    //    if (targetRepo == null)
-    //    {
-    //        _output.Warning($"⚠️ Repository not found: {targetRepoName}");
-    //        return;
-    //    }
-
-    //    var deps = graph.TryGetValue(targetRepo, out var set) ? set : null;
-    //    if (deps == null || deps.Count == 0)
-    //    {
-    //        _output.WriteLine($"{targetRepoName} has no Git repository dependencies.", ConsoleColor.Gray);
-    //        return;
-    //    }
-
-    //    _output.WriteLine($"{targetRepoName} depends on:", ConsoleColor.Cyan);
-    //    foreach (var dep in deps.OrderBy(x => x.Name))
-    //    {
-    //        _output.WriteLine($"  - {dep.Name}", ConsoleColor.Yellow);
-    //    }
-    //}
-
     private Dictionary<ProjectInfo, List<ProjectInfo>> BuildProjectDependencyGraph(
         GitRepositoryInfo[] repos)
     {
@@ -668,42 +694,6 @@ public class CommandService : ICommandService
 
         return graph;
     }
-
-    //private void WarnIfProjectsUseOldPackageVersions(GitRepositoryInfo[] repos)
-    //{
-    //    var allProjects = repos.SelectMany(r => r.Projects).ToList();
-
-    //    // Group by package name, collecting project + version info
-    //    var packageUsages = allProjects
-    //        .SelectMany(p => p.Packages.Select(pkg => (Project: p, Package: pkg)))
-    //        .Where(x => !string.IsNullOrWhiteSpace(x.Package.Name) && !string.IsNullOrWhiteSpace(x.Package.Version))
-    //        .GroupBy(x => x.Package.Name, StringComparer.OrdinalIgnoreCase);
-
-    //    foreach (var packageGroup in packageUsages)
-    //    {
-    //        var packageName = packageGroup.Key;
-
-    //        // Parse version objects and group by version
-    //        var versionGroups = packageGroup
-    //            .GroupBy(x => x.Package.Version)
-    //            .OrderByDescending(g => g.Key)
-    //            .ToList();
-
-    //        if (versionGroups.Count <= 1)
-    //            continue; // No version conflict
-
-    //        var latestVersion = versionGroups.First().Key;
-
-    //        foreach (var oldGroup in versionGroups.Skip(1))
-    //        {
-    //            var oldVersion = oldGroup.Key;
-    //            foreach (var usage in oldGroup)
-    //            {
-    //                _output.Warning($"- Project '{usage.Project.Name}' uses {packageName} {oldVersion} (latest known is {latestVersion}).");
-    //            }
-    //        }
-    //    }
-    //}
 
     private void PrintPackageLine(PackageInfo package, Dictionary<string, string> latestVersions, int indentLevel = 4)
     {
@@ -755,4 +745,53 @@ public class CommandService : ICommandService
             );
     }
 
+    private Dictionary<string, int> GetProjectUsageCounts(GitRepositoryInfo[] repos)
+    {
+        var allProjects = repos.SelectMany(r => r.Projects).ToList();
+
+        // Map PackageId → ProjectInfo (self)
+        var projectByPackageId = allProjects
+            .Where(p => !string.IsNullOrWhiteSpace(p.PackageId))
+            .ToDictionary(p => p.PackageId, StringComparer.OrdinalIgnoreCase);
+
+        // Count references
+        var usageCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var project in allProjects)
+        {
+            foreach (var package in project.Packages)
+            {
+                if (string.IsNullOrWhiteSpace(package.PackageId)) continue;
+
+                // If another project uses this package, count it
+                if (projectByPackageId.ContainsKey(package.PackageId))
+                {
+                    if (!usageCount.ContainsKey(package.PackageId))
+                        usageCount[package.PackageId] = 0;
+
+                    usageCount[package.PackageId]++;
+                }
+            }
+        }
+
+        return usageCount;
+    }
+
+    private Dictionary<GitRepositoryInfo, int> GetRepositoryUsageCounts(GitRepositoryInfo[] repos, Dictionary<string, int> projectUsageCounts)
+    {
+        var repoUsage = new Dictionary<GitRepositoryInfo, int>();
+
+        foreach (var repo in repos)
+        {
+            // Sum of unique dependent projects across all projects in this repo
+            var totalUsage = repo.Projects
+                .Where(p => !string.IsNullOrWhiteSpace(p.PackageId))
+                .Select(p => projectUsageCounts.TryGetValue(p.PackageId, out var count) ? count : 0)
+                .Sum();
+
+            repoUsage[repo] = totalUsage;
+        }
+
+        return repoUsage;
+    }
 }
