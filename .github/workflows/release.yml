@@ -43,14 +43,16 @@ jobs:
         run: dotnet restore
 
       - name: Build project
+        shell: pwsh
         run: |
-          echo "Building version ${{ env.VERSION }}"
-          dotnet build ${{ env.PROJECT_PATH }} `
-            --configuration ${{ env.BUILD_CONFIG }} `
-            /p:Version=${{ env.VERSION }} `
-            /p:AssemblyVersion=${{ env.VERSION }} `
-            /p:FileVersion=${{ env.VERSION }} `
-            /p:InformationalVersion=${{ env.VERSION }}
+          $version = if ($env:VERSION) { $env:VERSION } else { "0.0.0" }
+          Write-Host "Building version $version"
+          dotnet build $env:PROJECT_PATH `
+            --configuration $env:BUILD_CONFIG `
+            /p:Version=$version `
+            /p:AssemblyVersion=$version `
+            /p:FileVersion=$version `
+            /p:InformationalVersion=$version
 
       - name: Run tests
         run: dotnet test Tharga.Depend.Tests/Tharga.Depend.Tests.csproj --configuration ${{ env.BUILD_CONFIG }}
@@ -99,22 +101,33 @@ jobs:
           echo "### Release version: v${{ steps.version.outputs.version }}" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Build
-        run: dotnet build --configuration ${{ env.BUILD_CONFIG }}
+        shell: pwsh
+        run: |
+          $version = if ($env:VERSION) { $env:VERSION } else { "0.0.0" }
+          Write-Host "Building version $version"
+          dotnet build $env:PROJECT_PATH `
+            --configuration $env:BUILD_CONFIG `
+            /p:Version=$version `
+            /p:AssemblyVersion=$version `
+            /p:FileVersion=$version `
+            /p:InformationalVersion=$version
 
       - name: Publish EXE
+        shell: pwsh
         run: |
-          echo "Publishing version ${{ env.VERSION }}"
-          dotnet publish ${{ env.PROJECT_PATH }} `
-            --configuration ${{ env.BUILD_CONFIG }} `
-            --runtime ${{ env.RUNTIME }} `
+          $version = if ($env:VERSION) { $env:VERSION } else { "0.0.0" }
+          Write-Host "Publishing version $version"
+          dotnet publish $env:PROJECT_PATH `
+            --configuration $env:BUILD_CONFIG `
+            --runtime $env:RUNTIME `
             --self-contained true `
             /p:PublishSingleFile=true `
             /p:PublishTrimmed=true `
-            /p:Version=${{ env.VERSION }} `
-            /p:AssemblyVersion=${{ env.VERSION }} `
-            /p:FileVersion=${{ env.VERSION }} `
-            /p:InformationalVersion=${{ env.VERSION }} `
-            --output "${{ env.OUTPUT_DIR }}"
+            /p:Version=$version `
+            /p:AssemblyVersion=$version `
+            /p:FileVersion=$version `
+            /p:InformationalVersion=$version `
+            --output "$env:OUTPUT_DIR"
 
       - name: Prepare LICENSE and VERIFICATION for Chocolatey
         shell: pwsh
