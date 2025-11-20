@@ -1,4 +1,6 @@
-﻿namespace Tharga.Depend.Features.Output;
+﻿using System.Reflection;
+
+namespace Tharga.Depend.Features.Output;
 
 internal class OutputService : IOutputService
 {
@@ -17,6 +19,10 @@ internal class OutputService : IOutputService
 
     public void PrintHelp()
     {
+        var assemblyName = Assembly.GetEntryAssembly()?.GetName();
+        var version = assemblyName?.Version;
+
+        Console.WriteLine($"{assemblyName?.Name} version {version} by Thargelion AB.");
         Console.WriteLine("""
                       Usage:
                         depend [<folder>] [<parameter>] [--output <list|dependency>] [--project <ProjectName>]

@@ -18,10 +18,7 @@ internal class GitRepositoryService : IGitRepositoryService
     {
         if (!Directory.Exists(rootPath)) throw new InvalidOperationException($"Path {rootPath} does not exist.");
 
-        foreach (var repoPath in Directory
-                     .EnumerateDirectories(rootPath, ".git", SearchOption.AllDirectories)
-                     .Select(Path.GetDirectoryName)
-                     .Where(path => path != null))
+        foreach (var repoPath in EnumerateGitReposSafely(rootPath))
         {
             var subRepos = Directory
                 .EnumerateDirectories(repoPath, ".git", SearchOption.AllDirectories).Select(Path.GetDirectoryName)
@@ -44,6 +41,49 @@ internal class GitRepositoryService : IGitRepositoryService
         }
     }
 
+    private IEnumerable<string> EnumerateGitReposSafely(string rootPath)
+    {
+        var pending = new Queue<string>();
+        pending.Enqueue(rootPath);
+
+        while (pending.Count > 0)
+        {
+            var current = pending.Dequeue();
+            var subDirs = Array.Empty<string>();
+            var hasGit = false;
+
+            // Try to get subdirectories
+            try
+            {
+                subDirs = Directory.GetDirectories(current);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _output.Error($"Warning: Access denied to '{current}': {ex.Message}");
+            }
+            catch (IOException ex)
+            {
+                _output.Error($"Warning: IO error in '{current}': {ex.Message}");
+            }
+
+            // Try to detect .git folder
+            try
+            {
+                hasGit = Directory.EnumerateDirectories(current, ".git", SearchOption.TopDirectoryOnly).Any();
+            }
+            catch (Exception ex)
+            {
+                _output.Error($"Warning: Failed to check for '.git' in '{current}': {ex.Message}");
+            }
+
+            if (hasGit) yield return current;
+
+            foreach (var subdir in subDirs)
+            {
+                pending.Enqueue(subdir);
+            }
+        }
+    }
 
     private async IAsyncEnumerable<ProjectInfo> GetParsedProjects(IEnumerable<string> projects)
     {

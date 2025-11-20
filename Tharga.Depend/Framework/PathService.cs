@@ -16,13 +16,15 @@ internal class PathService : IPathService
         var exePath = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
         var currentPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "";
 
-        var pathSegments = currentPath.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-        if (pathSegments.Contains(exePath, StringComparer.OrdinalIgnoreCase)) return;
+        var pathSegments = currentPath
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Where(p => !File.Exists(Path.Combine(p.TrimEnd(Path.DirectorySeparatorChar), "depend.exe")))
+            .Append(exePath);
 
-        var newPath = string.Join(Path.PathSeparator, pathSegments.Append(exePath));
+        var newPath = string.Join(Path.PathSeparator, pathSegments.Distinct(StringComparer.OrdinalIgnoreCase));
         Environment.SetEnvironmentVariable("PATH", newPath, EnvironmentVariableTarget.User);
 
-        _output.WriteLine($"Added '{exePath}' to user PATH. You can now run this tool from anywhere.", ConsoleColor.Green);
+        _output.WriteLine($"Updated user PATH to include '{exePath}'. Any previous 'depend.exe' locations were removed.", ConsoleColor.Green);
     }
 
     public void RemoveFromPath()
