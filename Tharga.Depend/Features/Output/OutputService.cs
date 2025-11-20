@@ -43,6 +43,9 @@ internal class OutputService : IOutputService
                         --project-deps, -pd      Show project dependencies under each project. (Not for --output tree)
                         --project-usages, -pu    Show project usages under each project. (Not for --output tree)
 
+                        --register               Registers depend.exe to Path so it can be executed everywhere.
+                        --unregister             Removes Path registration.
+
                         --help, -h               Show this help message.
 
                       Exit Codes:

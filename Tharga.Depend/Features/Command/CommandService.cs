@@ -1,4 +1,5 @@
-﻿using Tharga.Depend.Features.Output;
+﻿using System.Diagnostics;
+using Tharga.Depend.Features.Output;
 using Tharga.Depend.Features.Repo;
 using Tharga.Depend.Framework;
 
@@ -40,7 +41,17 @@ internal class CommandService : ICommandService
                 return ExitWithCode(ExitSuccess);
             }
 
-            _pathService.EnsureInUserPath();
+            if (argsList.Contains("--register"))
+            {
+                _pathService.EnsureInUserPath();
+                return ExitWithCode(ExitSuccess);
+            }
+
+            if (argsList.Contains("--unregister"))
+            {
+                _pathService.RemoveFromPath();
+                return ExitWithCode(ExitSuccess);
+            }
 
             var rootPath = _pathService.GetRootPath(argsList);
             if (rootPath == null)
