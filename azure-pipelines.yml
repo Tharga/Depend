@@ -11,23 +11,15 @@ stages:
         displayName: 'Build & Test'
         pool:
           vmImage: 'windows-latest'
-
         variables:
           buildConfiguration: 'Release'
-          runtime: 'win-x64'
-          outputDir: '$(Build.ArtifactStagingDirectory)/output'
-          chocoDir: '$(Build.ArtifactStagingDirectory)/choco'
           projectPath: 'Tharga.Depend/Tharga.Depend.csproj'
           nuspecPath: 'Resources/choco/depend.nuspec'
           exeName: 'depend.exe'
+          outputDir: '$(Build.ArtifactStagingDirectory)/output'
+          chocoDir: '$(Build.ArtifactStagingDirectory)/choco'
 
         steps:
-          # - task: UseDotNet@2
-          #   displayName: 'Use .NET 9'
-          #   inputs:
-          #     version: 9.0.x
-          #     includePreviewVersions: false
-
           - task: NuGetToolInstaller@1
 
           - task: DotNetCoreCLI@2
@@ -50,20 +42,33 @@ stages:
               projects: 'Tharga.Depend.Tests/Tharga.Depend.Tests.csproj'
               arguments: '--configuration $(buildConfiguration)'
 
+          # Publish Windows build
           - task: DotNetCoreCLI@2
-            displayName: 'Publish EXE'
+            displayName: 'Publish Windows build'
             inputs:
               command: 'publish'
-              publishWebProjects: false
               projects: '$(projectPath)'
               arguments: >
                 --configuration $(buildConfiguration)
-                --runtime $(runtime)
+                --runtime win-x64
                 --self-contained true
-                /p:PublishSingleFile=true
-                /p:PublishTrimmed=true
-                --output $(outputDir)
-              zipAfterPublish: false
+                /p:PublishSingleFile=false
+                --output $(outputDir)/win-x64
+            zipAfterPublish: false
+
+          # Publish Linux build
+          - task: DotNetCoreCLI@2
+            displayName: 'Publish Linux build'
+            inputs:
+              command: 'publish'
+              projects: '$(projectPath)'
+              arguments: >
+                --configuration $(buildConfiguration)
+                --runtime linux-x64
+                --self-contained true
+                /p:PublishSingleFile=false
+                --output $(outputDir)/linux-x64
+            zipAfterPublish: false
 
           - task: PowerShell@2
             displayName: 'Prepare LICENSE and VERIFICATION for Chocolatey'
@@ -92,8 +97,6 @@ stages:
                   Write-Warning "VERIFICATION file not found at $verificationSource"
                 }
 
-                ls
-
           - task: PowerShell@2
             displayName: 'Create Chocolatey Package'
             inputs:
@@ -101,11 +104,11 @@ stages:
               script: |
                 choco install chocolatey --no-progress -y
 
-                $exe = Get-ChildItem "$(outputDir)" -Filter *.exe -Recurse | Where-Object { $_.Name -ieq "depend.exe" } | Select-Object -First 1
+                $exe = Get-ChildItem "$(outputDir)/win-x64" -Filter *.exe -Recurse | Where-Object { $_.Name -ieq "$(exeName)" } | Select-Object -First 1
                 if (-not $exe) {
-                  Write-Host "Looking for EXE in: $(outputDir)"
-                  Get-ChildItem "$(outputDir)" -Recurse
-                  throw "EXE not found in output directory: $(outputDir)"
+                  Write-Host "Looking for EXE in: $(outputDir)/win-x64"
+                  Get-ChildItem "$(outputDir)/win-x64" -Recurse
+                  throw "EXE not found in output directory: $(outputDir)/win-x64"
                 }
 
                 $temp = "$(Build.ArtifactStagingDirectory)/choco-temp"
@@ -113,14 +116,7 @@ stages:
                 New-Item -ItemType Directory -Path $tools -Force | Out-Null
 
                 Copy-Item $exe.FullName -Destination $tools
-
-                $nuspecSource = "$(nuspecPath)"
-                Copy-Item $nuspecSource "$temp/depend.nuspec"
-
-                # Ensure LICENSE.txt and VERIFICATION.txt are copied into the $temp directory
-                $chocoMetadataPath = "$(Build.SourcesDirectory)/Resources/choco"
-                Copy-Item "$chocoMetadataPath/LICENSE.txt" -Destination "$temp/LICENSE.txt" -Force
-                Copy-Item "$chocoMetadataPath/VERIFICATION.txt" -Destination "$temp/VERIFICATION.txt" -Force
+                Copy-Item "$(nuspecPath)" "$temp/depend.nuspec"
 
                 Push-Location $temp
                 choco pack depend.nuspec --version "$(Build.BuildNumber)" --out "$(chocoDir)"
@@ -150,7 +146,6 @@ stages:
         displayName: 'Push Chocolatey Package and Create GitHub Release'
         pool:
           vmImage: 'windows-latest'
-
         steps:
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Artifact from Build'
@@ -159,7 +154,6 @@ stages:
               artifactName: 'drop'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          # Push to Chocolatey
           - task: PowerShell@2
             displayName: 'Push .nupkg to Chocolatey'
             inputs:
@@ -172,11 +166,10 @@ stages:
                 }
                 choco push $pkg.FullName --source https://push.chocolatey.org/ --api-key "$(CHOCOLATEY_API_KEY)"
 
-          # Create a GitHub release
           # - task: GitHubRelease@1
           #   displayName: 'Create GitHub Release'
           #   inputs:
-          #     gitHubConnection: 'GitHubServiceConnection' # set up in Project Settings --> Service connections
+          #     gitHubConnection: 'GitHubServiceConnection'
           #     repositoryName: 'Tharga/Depend'
           #     tagSource: 'manual'
           #     tag: 'v$(Build.BuildNumber)'
@@ -186,7 +179,6 @@ stages:
           #     isPreRelease: false
           #     addChangeLog: true
 
-          # Create a version tag in the GitHub repo
           # - task: PowerShell@2
           #   displayName: 'Tag GitHub Repository'
           #   inputs:
