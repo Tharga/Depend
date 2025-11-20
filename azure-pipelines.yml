@@ -70,7 +70,7 @@ stages:
                 $chocoPath = "$(Build.SourcesDirectory)/Resources/choco"
                 $licenseSource = "$(Build.SourcesDirectory)/LICENSE"
                 $licenseTarget = Join-Path $chocoPath "LICENSE.txt"
-                $verificationSource = Join-Path $chocoPath "VERIFICATION"
+                $verificationSource = "$(Build.SourcesDirectory)/VERIFICATION"
                 $verificationTarget = Join-Path $chocoPath "VERIFICATION.txt"
 
                 Write-Host "Preparing license and verification files for Chocolatey packaging..."
@@ -88,6 +88,8 @@ stages:
                 } else {
                   Write-Warning "VERIFICATION file not found at $verificationSource"
                 }
+
+                ls
 
           - task: PowerShell@2
             displayName: 'Create Chocolatey Package'
@@ -109,7 +111,13 @@ stages:
 
                 Copy-Item $exe.FullName -Destination $tools
 
-                Copy-Item "$(nuspecPath)" "$temp/depend.nuspec"
+                $nuspecSource = "$(nuspecPath)"
+                Copy-Item $nuspecSource "$temp/depend.nuspec"
+
+                # Ensure LICENSE.txt and VERIFICATION.txt are copied into the $temp directory
+                $chocoMetadataPath = "$(Build.SourcesDirectory)/Resources/choco"
+                Copy-Item "$chocoMetadataPath/LICENSE.txt" -Destination "$temp/LICENSE.txt" -Force
+                Copy-Item "$chocoMetadataPath/VERIFICATION.txt" -Destination "$temp/VERIFICATION.txt" -Force
 
                 Push-Location $temp
                 choco pack depend.nuspec --version "$(Build.BuildNumber)" --out "$(chocoDir)"
