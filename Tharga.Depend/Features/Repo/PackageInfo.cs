@@ -1,4 +1,6 @@
-namespace Tharga.Depend.Models;
+using Tharga.Depend.Features.Project;
+
+namespace Tharga.Depend.Features.Repo;
 
 public record PackageInfo
 {

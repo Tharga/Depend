@@ -1,12 +1,7 @@
 ﻿using System.Xml.Linq;
-using Tharga.Depend.Models;
+using Tharga.Depend.Features.Repo;
 
-namespace Tharga.Depend.Services;
-
-public interface IProjectService
-{
-    Task<ProjectInfo> ParseProject(string projectFilePath);
-}
+namespace Tharga.Depend.Features.Project;
 
 internal class ProjectService : IProjectService
 {
@@ -16,6 +11,25 @@ internal class ProjectService : IProjectService
         var ns = doc.Root?.Name.Namespace ?? string.Empty;
 
         var name = Path.GetFileNameWithoutExtension(projectFilePath);
+
+        // Extract TargetFramework or TargetFrameworks (no defaults, no assumptions)
+        string tfm = null;
+
+        var tfSingle = doc.Descendants(ns + "TargetFramework").FirstOrDefault()?.Value.Trim();
+        if (!string.IsNullOrWhiteSpace(tfSingle))
+        {
+            tfm = tfSingle;
+        }
+        else
+        {
+            var tfMulti = doc.Descendants(ns + "TargetFrameworks").FirstOrDefault()?.Value.Trim();
+            if (!string.IsNullOrWhiteSpace(tfMulti))
+            {
+                // You can choose to pick first or expose all later
+                var frameworks = tfMulti.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                tfm = frameworks.FirstOrDefault(); // choose first if multiple
+            }
+        }
 
         // Package references
         var packageReferences = doc.Descendants(ns + "PackageReference")
@@ -44,7 +58,8 @@ internal class ProjectService : IProjectService
             Path = projectFilePath,
             Name = name,
             PackageId = GetPackageId(doc, name),
-            Packages = projects.Union(packages).ToArray()
+            Packages = projects.Union(packages).ToArray(),
+            TargetFramework = tfm
         };
     }
 
@@ -118,7 +133,7 @@ internal class ProjectService : IProjectService
         var isPackable = hasExplicitIsPackable
             ? isExplicitlyPackable
             : hasNugetMetadata;
-        var packageId = isPackable ? (doc.Descendants(ns + "PackageId").FirstOrDefault()?.Value ?? name) : null;
+        var packageId = isPackable ? doc.Descendants(ns + "PackageId").FirstOrDefault()?.Value ?? name : null;
         return packageId;
     }
 }

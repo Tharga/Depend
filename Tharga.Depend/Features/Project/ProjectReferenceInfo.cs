@@ -1,4 +1,4 @@
-namespace Tharga.Depend.Models;
+namespace Tharga.Depend.Features.Project;
 
 public record ProjectReferenceInfo
 {

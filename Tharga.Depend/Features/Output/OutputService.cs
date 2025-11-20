@@ -1,14 +1,6 @@
-﻿namespace Tharga.Depend.Services;
+﻿namespace Tharga.Depend.Features.Output;
 
-public interface IOutputService
-{
-    void WriteLine(string message, ConsoleColor color = ConsoleColor.Gray);
-    void Error(string message);
-    void Warning(string message);
-    void PrintHelp();
-}
-
-public class OutputService : IOutputService
+internal class OutputService : IOutputService
 {
     public void WriteLine(string message, ConsoleColor color = ConsoleColor.Gray)
     {
@@ -27,30 +19,29 @@ public class OutputService : IOutputService
     {
         Console.WriteLine("""
                       Usage:
-                        depend <folder> [--output <list|dependency>] [--project <ProjectName>]
+                        depend [<folder>] [<parameter>] [--output <list|dependency>] [--project <ProjectName>]
 
                       Arguments:
                         <folder>                 Root folder containing Git repositories and projects.
+                        <parameter>              Can be any of the output modes or view modes, in full text.
 
                       Options:
-                        --output, -o <mode>      Output structure:
-                                                   list, l        Grouped by repo (default)
-                                                   dependency, d  Ordered by build dependency
+                        --output, -o <mode>      Output mode:
+                                                   dependency, d  Ordered by build dependency (default)
+                                                   list, l        Grouped by repo
+                                                   tree, t        Dependency tree
 
-                        --view, -v <view>        Output content level:
+                        --view, -v <view>        View mode:
                                                    default, d       Repos + projects (default)
                                                    full, f          Repos + projects + packages
-                                                   repo-only, r     Only repos
-                                                   project-only, p  Only projects
+                                                   repo, r          Only repos
+                                                   project, p       Only projects
 
-                        --project, -p            Filter results to a specific project by name.
-
-                        --exclude, -x <pattern>  Exclude projects containing this text from output (e.g. ".Tests").
                         --only-packable, -n      Show only NuGet-packable projects (projects with a PackageId).
-                        --repo-deps, -rd         Show Git repository dependencies under each repo (only for --output dependency).
-                        --repo-usages, -ru       Show Git repository usages under each repo (only for --output dependency).
-                        --project-deps, -pd      Show project dependencies under each project (only for --output dependency).
-                        --project-usages, -pu    Show project usages under each project (only for --output dependency).
+                        --repo-deps, -rd         Show Git repository dependencies under each repo. (Not for --output tree)
+                        --repo-usages, -ru       Show Git repository usages under each repo. (Not for --output tree)
+                        --project-deps, -pd      Show project dependencies under each project. (Not for --output tree)
+                        --project-usages, -pu    Show project usages under each project. (Not for --output tree)
 
                         --help, -h               Show this help message.
 
@@ -73,13 +64,17 @@ public class OutputService : IOutputService
                         - 'References' indicates how many projects or repos the item depends on.
                         - Circular dependencies will be reported with an error message.
                         - All output is deterministic and ordered for consistent CI/CD results.
+                        - Names surrounded by [] are nuget packages that is part of a project.
 
                       Examples:
-                        depend C:\dev
+                        depend
                         depend C:\dev --output dependency
                         depend C:\dev --output dependency --project Tharga.MongoDB
                         depend C:\dev -v full -pd -pu
+                        depend full tree
                       """);
     }
 
+    //  --exclude, -x <pattern>  Exclude projects containing this text from output (e.g. ".Tests").
+    //  --project, -p            Filter results to a specific project by name.
 }

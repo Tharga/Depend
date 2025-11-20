@@ -1,4 +1,5 @@
-﻿using Tharga.Depend.Services;
+﻿using Moq.AutoMock;
+using Tharga.Depend.Features.Output;
 using Xunit;
 
 namespace Tharga.Depend.Tests;
@@ -9,7 +10,8 @@ public class OutputServiceTests
     public void GetHelp()
     {
         //Arrange
-        var sut = new OutputService();
+        var mocker = new AutoMocker();
+        var sut = mocker.CreateInstance<OutputService>();
 
         //Act
         sut.PrintHelp();

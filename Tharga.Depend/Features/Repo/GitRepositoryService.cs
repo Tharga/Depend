@@ -1,11 +1,7 @@
-﻿using Tharga.Depend.Models;
+﻿using Tharga.Depend.Features.Output;
+using Tharga.Depend.Features.Project;
 
-namespace Tharga.Depend.Services;
-
-public interface IGitRepositoryService
-{
-    IAsyncEnumerable<GitRepositoryInfo> GetAsync(string rootPath);
-}
+namespace Tharga.Depend.Features.Repo;
 
 internal class GitRepositoryService : IGitRepositoryService
 {
