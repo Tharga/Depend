@@ -450,6 +450,7 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         tfm = tfm.ToLowerInvariant();
 
         // crude but practical ranking (higher is more specific/newer)
+        if (tfm.StartsWith("net10.0")) return 10000;
         if (tfm.StartsWith("net9.0")) return 9000;
         if (tfm.StartsWith("net8.0")) return 8000;
         if (tfm.StartsWith("net7.0")) return 7000;
