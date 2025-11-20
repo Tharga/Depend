@@ -162,32 +162,32 @@ stages:
                 choco push $pkg.FullName --source https://push.chocolatey.org/ --api-key "$(CHOCOLATEY_API_KEY)"
 
           # Create a GitHub release
-          - task: GitHubRelease@1
-            displayName: 'Create GitHub Release'
-            inputs:
-              gitHubConnection: 'GitHubServiceConnection' # set up in Project Settings --> Service connections
-              repositoryName: 'Tharga/Depend'
-              tagSource: 'manual'
-              tag: 'v$(Build.BuildNumber)'
-              title: 'Release $(Build.BuildNumber)'
-              assets: '$(System.ArtifactsDirectory)/drop/choco/*.nupkg'
-              isDraft: false
-              isPreRelease: false
-              addChangeLog: true
+          # - task: GitHubRelease@1
+          #   displayName: 'Create GitHub Release'
+          #   inputs:
+          #     gitHubConnection: 'GitHubServiceConnection' # set up in Project Settings --> Service connections
+          #     repositoryName: 'Tharga/Depend'
+          #     tagSource: 'manual'
+          #     tag: 'v$(Build.BuildNumber)'
+          #     title: 'Release $(Build.BuildNumber)'
+          #     assets: '$(System.ArtifactsDirectory)/drop/choco/*.nupkg'
+          #     isDraft: false
+          #     isPreRelease: false
+          #     addChangeLog: true
 
           # Create a version tag in the GitHub repo
-          - task: PowerShell@2
-            displayName: 'Tag GitHub Repository'
-            inputs:
-              targetType: 'inline'
-              script: |
-                $version = "$(Build.BuildNumber)"
-                $tag = "$version"
+          # - task: PowerShell@2
+          #   displayName: 'Tag GitHub Repository'
+          #   inputs:
+          #     targetType: 'inline'
+          #     script: |
+          #       $version = "$(Build.BuildNumber)"
+          #       $tag = "$version"
 
-                Write-Host "Creating git tag $tag"
+          #       Write-Host "Creating git tag $tag"
 
-                git config user.email "builds@azuredevops.com"
-                git config user.name "Azure DevOps Pipeline"
+          #       git config user.email "builds@azuredevops.com"
+          #       git config user.name "Azure DevOps Pipeline"
 
-                git tag -a $tag -m "Release $version"
-                git push origin $tag
+          #       git tag -a $tag -m "Release $version"
+          #       git push origin $tag
