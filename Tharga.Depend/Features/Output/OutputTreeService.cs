@@ -174,19 +174,9 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
                     if (!string.IsNullOrWhiteSpace(pkg.Name) && !string.IsNullOrWhiteSpace(pkg.Version))
                     {
                         var isPkgLast = k == packages.Count - 1;
-                        var childPrefix = pkgPrefix + (isPkgLast ? "    " : "│   ");
-
-                        PrintPackageNodeResolvedFirst(
-                            childPrefix,
-                            true, // <-- always treat first dependency level as LAST
-                            pkg.Name,
-                            pkg.Version,
-                            resolvedGraph,
-                            1,
-                            10,
-                            visited,
-                            false
-                        );
+                        //var childPrefix = pkgPrefix + (isPkgLast ? "    " : "│   ");
+                        var childPrefix = pkgPrefix + (isPkgLast ? "" : "│   ");
+                        PrintPackageNodeResolvedFirst(childPrefix, true, pkg.Name, pkg.Version, resolvedGraph, 1, 10, visited, false);
                     }
                 }
             }
@@ -593,26 +583,19 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         return map;
     }
 
-    private void PrintPackageNodeResolvedFirst(
-        string prefix,
-        bool isLast,
-        string packageId,
-        string version,
-        Dictionary<string, Dictionary<string, List<(string Id, string Version)>>> resolvedGraph,
-        int depth,
-        int maxDepth,
-        HashSet<string> visited,
-        bool printSelf)
+    private void PrintPackageNodeResolvedFirst(string prefix, bool isLast, string packageId, string version, Dictionary<string, Dictionary<string, List<(string Id, string Version)>>> resolvedGraph, int depth, int maxDepth, HashSet<string> visited, bool printSelf)
     {
         if (depth > maxDepth) return;
 
         var visitKey = $"{packageId}:{version}";
         if (!visited.Add(visitKey)) return;
 
+        var subPrefix = prefix + (isLast ? "" : "│   ");
         if (printSelf)
         {
             var branch = isLast ? "└── " : "├── ";
             _output.WriteLine($"{prefix}{branch}{packageId} ({version})", ConsoleColor.DarkGray);
+            subPrefix = prefix + (isLast ? "    " : "│   ");
         }
 
         // Prefer exact, resolved children from assets.json
@@ -623,15 +606,12 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
 
         if (children.Count == 0) return;
 
-        var subPrefix = prefix + (isLast ? "    " : "│   ");
+        //var subPrefix = prefix + (isLast ? "    " : "│   ");
         for (var i = 0; i < children.Count; i++)
         {
             var dep = children[i];
-            PrintPackageNodeResolvedFirst(
-                subPrefix, i == children.Count - 1,
-                dep.Id, dep.Version,
-                resolvedGraph,
-                depth + 1, maxDepth, visited, true);
+            var last = i == children.Count - 1;
+            PrintPackageNodeResolvedFirst(subPrefix, last, dep.Id, dep.Version, resolvedGraph, depth + 1, maxDepth, visited, true);
         }
     }
 
