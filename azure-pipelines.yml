@@ -20,6 +20,12 @@ stages:
           chocoDir: '$(Build.ArtifactStagingDirectory)/choco'
 
         steps:
+          - task: UseDotNet@2
+            displayName: 'Use .NET 10'
+            inputs:
+              version: 10.0.x
+              includePreviewVersions: false
+
           - task: NuGetToolInstaller@1
 
           - task: DotNetCoreCLI@2
@@ -47,6 +53,7 @@ stages:
             displayName: 'Publish Windows build'
             inputs:
               command: 'publish'
+              publishWebProjects: false
               projects: '$(projectPath)'
               arguments: >
                 --configuration $(buildConfiguration)
@@ -54,13 +61,14 @@ stages:
                 --self-contained true
                 /p:PublishSingleFile=false
                 --output $(outputDir)/win-x64
-            zipAfterPublish: false
+              zipAfterPublish: false
 
           # Publish Linux build
           - task: DotNetCoreCLI@2
             displayName: 'Publish Linux build'
             inputs:
               command: 'publish'
+              publishWebProjects: false
               projects: '$(projectPath)'
               arguments: >
                 --configuration $(buildConfiguration)
@@ -68,34 +76,37 @@ stages:
                 --self-contained true
                 /p:PublishSingleFile=false
                 --output $(outputDir)/linux-x64
-            zipAfterPublish: false
+              zipAfterPublish: false
 
           - task: PowerShell@2
             displayName: 'Prepare LICENSE and VERIFICATION for Chocolatey'
             inputs:
               targetType: 'inline'
               script: |
-                $chocoPath = "$(Build.SourcesDirectory)/Resources/choco"
-                $licenseSource = "$(Build.SourcesDirectory)/LICENSE"
-                $licenseTarget = Join-Path $chocoPath "LICENSE.txt"
-                $verificationSource = "$(Build.SourcesDirectory)/VERIFICATION"
-                $verificationTarget = Join-Path $chocoPath "VERIFICATION.txt"
+                $temp = "$(Build.ArtifactStagingDirectory)/choco-temp"
+                if (-not (Test-Path $temp)) {
+                  New-Item -ItemType Directory -Path $temp | Out-Null
+                }
 
-                Write-Host "Preparing license and verification files for Chocolatey packaging..."
+                $licenseSource = "$(Build.SourcesDirectory)/LICENSE"
+                $verificationSource = "$(Build.SourcesDirectory)/VERIFICATION"
+
+                $licenseTarget = Join-Path $temp "LICENSE.txt"
+                $verificationTarget = Join-Path $temp "VERIFICATION.txt"
+
+                Write-Host "Preparing LICENSE.txt and VERIFICATION.txt..."
 
                 if (Test-Path $licenseSource) {
                   Copy-Item $licenseSource -Destination $licenseTarget -Force
-                  Write-Host "Copied LICENSE -> LICENSE.txt"
-                } else {
-                  Write-Warning "LICENSE file not found at $licenseSource"
+                  Write-Host "Copied LICENSE -> $licenseTarget"
                 }
 
                 if (Test-Path $verificationSource) {
                   Copy-Item $verificationSource -Destination $verificationTarget -Force
-                  Write-Host "Copied VERIFICATION -> VERIFICATION.txt"
-                } else {
-                  Write-Warning "VERIFICATION file not found at $verificationSource"
+                  Write-Host "Copied VERIFICATION -> $verificationTarget"
                 }
+
+                ls $temp
 
           - task: PowerShell@2
             displayName: 'Create Chocolatey Package'
