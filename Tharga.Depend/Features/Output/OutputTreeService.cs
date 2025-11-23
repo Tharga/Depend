@@ -182,7 +182,9 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
                     if (!string.IsNullOrWhiteSpace(pkg.Name) && !string.IsNullOrWhiteSpace(pkg.Version))
                     {
                         var isPkgLast = k == packages.Count - 1;
-                        var childPrefix = pkgPrefix + (isPkgLast ? "" : "│   ");
+                        var childPrefix = pkgPrefix + (isPkgLast ? "    " : "│   ");
+                        //var childPrefix = pkgPrefix + (isPkgLast ? "XXXX" : "│XXX");
+                        //var childPrefix = pkgPrefix.Substring(0, pkgPrefix.Length - 4) + (isPkgLast ? "    " : "│   ");
                         PrintPackageNodeResolvedFirst(childPrefix, true, pkg.Name, pkg.Version, resolvedGraph, 1, 10, visited, false);
                     }
                 }
@@ -583,23 +585,37 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         if (depth > maxDepth) return;
 
         var visitKey = $"{packageId}:{version}";
-        if (!visited.Add(visitKey)) return;
+        var v = !visited.Add(visitKey);
 
-        var subPrefix = prefix + (isLast ? "" : "│   ");
-        if (printSelf)
-        {
-            var branch = isLast ? "└── " : "├── ";
-            _output.WriteLine($"{prefix}{branch}{packageId} ({version})", ConsoleColor.DarkGray);
-            subPrefix = prefix + (isLast ? "    " : "│   ");
-        }
-
-        // Prefer exact, resolved children from assets.json
         var children =
             resolvedGraph.TryGetValue(packageId, out var byVersion) && byVersion.TryGetValue(version, out var depsFromAssets)
                 ? depsFromAssets
                 : GetNugetDependencies(packageId, version, null); // fallback to nuspec if not found
 
+        //var subPrefix = prefix + (isLast ? "YYYY" : "│YYY");
+        var subPrefix = prefix + (isLast ? "" : "│YYY");
+        if (printSelf)
+        {
+            var branch = isLast ? "└── " : "├── ";
+            _output.WriteLine($"{prefix}{branch}{packageId} ({version})", ConsoleColor.DarkGray);
+            if (v && children.Count != 0)
+            {
+                var vb = branch == "├── "
+                    ? "│   "
+                    : branch == "└── "
+                        ? "    "
+                        : branch;
+                _output.WriteLine($"{prefix}{vb}└── ...", ConsoleColor.DarkGray);
+            }
+            subPrefix = prefix + (isLast ? "    " : "│   ");
+        }
+
+        if (v) return;
+
+        // Prefer exact, resolved children from assets.json
         if (children.Count == 0) return;
+
+        children = children.OrderBy(x => x.Id).ToList();
 
         for (var i = 0; i < children.Count; i++)
         {

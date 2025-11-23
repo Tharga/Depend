@@ -74,6 +74,7 @@ internal class OutputService : IOutputService
                         - Circular dependencies will be reported with an error message.
                         - All output is deterministic and ordered for consistent CI/CD results.
                         - Names surrounded by [] are nuget packages that is part of a project.
+                        - In the tree output, '...' means there are omited packages that have already been printed.
 
                       Examples:
                         depend
