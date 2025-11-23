@@ -1,4 +1,6 @@
-﻿namespace Tharga.Depend.Features.Output;
+﻿using System.Reflection;
+
+namespace Tharga.Depend.Features.Output;
 
 internal class OutputService : IOutputService
 {
@@ -17,6 +19,10 @@ internal class OutputService : IOutputService
 
     public void PrintHelp()
     {
+        var assemblyName = Assembly.GetEntryAssembly()?.GetName();
+        var version = assemblyName?.Version;
+
+        Console.WriteLine($"{assemblyName?.Name} version {version} by Thargelion AB.");
         Console.WriteLine("""
                       Usage:
                         depend [<folder>] [<parameter>] [--output <list|dependency>] [--project <ProjectName>]
@@ -43,6 +49,9 @@ internal class OutputService : IOutputService
                         --project-deps, -pd      Show project dependencies under each project. (Not for --output tree)
                         --project-usages, -pu    Show project usages under each project. (Not for --output tree)
 
+                        --register               Registers depend.exe to Path so it can be executed everywhere.
+                        --unregister             Removes Path registration.
+
                         --help, -h               Show this help message.
 
                       Exit Codes:
@@ -65,6 +74,7 @@ internal class OutputService : IOutputService
                         - Circular dependencies will be reported with an error message.
                         - All output is deterministic and ordered for consistent CI/CD results.
                         - Names surrounded by [] are nuget packages that is part of a project.
+                        - In the tree output, '...' means there are omited packages that have already been printed.
 
                       Examples:
                         depend

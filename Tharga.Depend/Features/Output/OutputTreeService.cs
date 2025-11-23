@@ -1,5 +1,6 @@
-﻿using System.Diagnostics;
-using Tharga.Depend.Features.Project;
+﻿using System.IO.Compression;
+using System.Text.Json;
+using System.Xml.Linq;
 using Tharga.Depend.Features.Repo;
 
 namespace Tharga.Depend.Features.Output;
@@ -41,14 +42,15 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
     // ---------------------------
     private void PrintRepoTreeDependencies(GitRepositoryInfo[] repos, string excludePattern, bool onlyPackable)
     {
-        // BuildRepositoryDependencyGraph returns Dictionary<GitRepositoryInfo, HashSet<GitRepositoryInfo>>
         var graph = BuildRepositoryDependencyGraph(repos);
 
         var roots = FindRepoRoots(repos, graph);
 
         _output.WriteLine(".", ConsoleColor.White);
         foreach (var root in roots)
-            PrintRepoNode(root, graph, prefix: "", isLast: root == roots.Last());
+        {
+            PrintRepoNode(root, graph, "", root == roots.Last());
+        }
     }
 
     private List<GitRepositoryInfo> FindRepoRoots(
@@ -73,15 +75,19 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         _output.WriteLine($"{prefix}{branch}{repoName}", ConsoleColor.Green);
 
         if (!graph.TryGetValue(repo, out var deps) || deps.Count == 0)
+        {
             return;
+        }
 
         var subPrefix = prefix + (isLast ? "    " : "│   ");
 
         // Order deterministically when iterating a HashSet
         var ordered = deps.OrderBy(x => x.Name).ToList();
 
-        for (int i = 0; i < ordered.Count; i++)
+        for (var i = 0; i < ordered.Count; i++)
+        {
             PrintRepoNode(ordered[i], graph, subPrefix, i == ordered.Count - 1);
+        }
     }
 
     // ---------------------------
@@ -101,7 +107,9 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
 
         _output.WriteLine(".", ConsoleColor.White);
         foreach (var root in roots)
-            PrintProjectNode(root, graph, prefix: "", isLast: root == roots.Last(), allProjects);
+        {
+            PrintProjectNode(root, graph, "", root == roots.Last(), allProjects);
+        }
     }
 
     private void PrintProjectNode(ProjectInfo project, Dictionary<ProjectInfo, List<ProjectInfo>> graph, string prefix, bool isLast, List<ProjectInfo> allProjects)
@@ -110,13 +118,17 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         _output.WriteLine($"{prefix}{branch}{project.Name}{FormatId(project.PackageId, allProjects)}", ConsoleColor.Yellow);
 
         if (!graph.TryGetValue(project, out var deps) || deps.Count == 0)
+        {
             return;
+        }
 
         var subPrefix = prefix + (isLast ? "    " : "│   ");
         var orderedDeps = deps.OrderBy(x => x.Name).ToList();
 
-        for (int i = 0; i < orderedDeps.Count; i++)
+        for (var i = 0; i < orderedDeps.Count; i++)
+        {
             PrintProjectNode(orderedDeps[i], graph, subPrefix, i == orderedDeps.Count - 1, allProjects);
+        }
     }
 
     // ---------------------------
@@ -128,22 +140,30 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
 
         var orderedRepos = repos.OrderBy(r => r.Name).ToList();
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        const int maxDepth = 10;
 
         var allProjects = repos.SelectMany(r => r.Projects).ToList();
 
-        foreach (var repo in orderedRepos)
+        for (var index = 0; index < orderedRepos.Count; index++)
         {
+            var isRepoLast = index == orderedRepos.Count - 1;
+            var repo = orderedRepos[index];
             var repoName = GetDisplayName(repo);
-            _output.WriteLine($"├── {repoName}", ConsoleColor.Green);
+            if (isRepoLast)
+            {
+                _output.WriteLine($"└── {repoName}", ConsoleColor.Green);
+            }
+            else
+            {
+                _output.WriteLine($"├── {repoName}", ConsoleColor.Green);
+            }
 
-            var repoPrefix = "│   ";
+            var repoPrefix = isRepoLast ? "    " : "│   ";
             var projects = repo.Projects
                 .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
                 .OrderBy(p => p.Name)
                 .ToList();
 
-            for (int j = 0; j < projects.Count; j++)
+            for (var j = 0; j < projects.Count; j++)
             {
                 var project = projects[j];
                 var projBranch = j == projects.Count - 1 ? "└── " : "├── ";
@@ -153,7 +173,7 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
                 var packages = project.Packages.OrderBy(p => p.Name).ToList();
 
                 var resolvedGraph = LoadResolvedGraphFromAssets(project.Path); // per project
-                for (int k = 0; k < packages.Count; k++)
+                for (var k = 0; k < packages.Count; k++)
                 {
                     var pkg = packages[k];
                     var pkgBranch = k == packages.Count - 1 ? "└── " : "├── ";
@@ -161,9 +181,11 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
 
                     if (!string.IsNullOrWhiteSpace(pkg.Name) && !string.IsNullOrWhiteSpace(pkg.Version))
                     {
-                        var subPrefix = pkgPrefix + (k == packages.Count - 1 ? "    " : "│   ");
-                        // recurse using resolved graph (accurate), fallback to nuspec if not present
-                        PrintPackageNodeResolvedFirst(subPrefix, true, pkg.Name, pkg.Version, resolvedGraph, depth: 1, maxDepth: 10, visited);
+                        var isPkgLast = k == packages.Count - 1;
+                        var childPrefix = pkgPrefix + (isPkgLast ? "    " : "│   ");
+                        //var childPrefix = pkgPrefix + (isPkgLast ? "XXXX" : "│XXX");
+                        //var childPrefix = pkgPrefix.Substring(0, pkgPrefix.Length - 4) + (isPkgLast ? "    " : "│   ");
+                        PrintPackageNodeResolvedFirst(childPrefix, true, pkg.Name, pkg.Version, resolvedGraph, 1, 10, visited, false);
                     }
                 }
             }
@@ -177,7 +199,7 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
     {
         var repoGraph = BuildRepositoryDependencyGraph(repos); // Dictionary<GitRepositoryInfo, HashSet<GitRepositoryInfo>>
         var projectGraph = BuildProjectDependencyGraph(repos); // Dictionary<ProjectInfo, List<ProjectInfo>>
-        var repoRoots = FindRepoRoots(repos, repoGraph);       // uses HashSet version
+        var repoRoots = FindRepoRoots(repos, repoGraph); // uses HashSet version
 
         _output.WriteLine(".", ConsoleColor.White);
 
@@ -188,8 +210,8 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
                 repo,
                 repoGraph,
                 projectGraph,
-                prefix: "",
-                isLast: repo == repoRoots.Last(),
+                "",
+                repo == repoRoots.Last(),
                 excludePattern,
                 onlyPackable,
                 allProjects);
@@ -218,7 +240,7 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
             .OrderBy(p => p.Name)
             .ToList();
 
-        for (int i = 0; i < projects.Count; i++)
+        for (var i = 0; i < projects.Count; i++)
         {
             var project = projects[i];
             var repoHasDeps = repoGraph.TryGetValue(repo, out var _deps) && _deps.Count > 0;
@@ -238,7 +260,7 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
                 if (internalDeps.Count > 0)
                 {
                     var projSubPrefix = subPrefix + (projIsLast ? "    " : "│   ");
-                    for (int j = 0; j < internalDeps.Count; j++)
+                    for (var j = 0; j < internalDeps.Count; j++)
                     {
                         var dep = internalDeps[j];
                         var depBranch = j == internalDeps.Count - 1 ? "└── " : "├── ";
@@ -252,7 +274,7 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         if (repoGraph.TryGetValue(repo, out var repoDeps) && repoDeps.Count > 0)
         {
             var orderedDeps = repoDeps.OrderBy(x => x.Name).ToList();
-            for (int i = 0; i < orderedDeps.Count; i++)
+            for (var i = 0; i < orderedDeps.Count; i++)
             {
                 var dep = orderedDeps[i];
                 PrintMixedRepoNode(
@@ -271,11 +293,15 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
     private List<(string Id, string Version)> GetNugetDependencies(string packageId, string version, string requestedTfm)
     {
         if (string.IsNullOrWhiteSpace(packageId) || string.IsNullOrWhiteSpace(version))
-            return new();
+        {
+            return new List<(string Id, string Version)>();
+        }
 
         var cacheKey = $"{packageId.ToLowerInvariant()}:{version}:{requestedTfm?.ToLowerInvariant()}";
         if (_nugetCache.TryGetValue(cacheKey, out var cached))
+        {
             return cached;
+        }
 
         try
         {
@@ -283,7 +309,7 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
             var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             var localPath = Path.Combine(userProfile, ".nuget", "packages", packageId.ToLowerInvariant(), version, $"{packageId.ToLowerInvariant()}.{version}.nupkg");
 
-            string nupkgPath = localPath;
+            var nupkgPath = localPath;
             if (!File.Exists(nupkgPath))
             {
                 var url = $"https://api.nuget.org/v3-flatcontainer/{packageId.ToLowerInvariant()}/{version}/{packageId.ToLowerInvariant()}.{version}.nupkg";
@@ -293,38 +319,40 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
                     var resp = http.GetAsync(url).GetAwaiter().GetResult();
                     if (!resp.IsSuccessStatusCode)
                     {
-                        _nugetCache[cacheKey] = new();
-                        return new();
+                        _nugetCache[cacheKey] = new List<(string Id, string Version)>();
+                        return new List<(string Id, string Version)>();
                     }
+
                     using var fs = File.Create(tmp);
                     resp.Content.CopyToAsync(fs).GetAwaiter().GetResult();
                 }
+
                 nupkgPath = tmp;
             }
 
-            using var zip = System.IO.Compression.ZipFile.OpenRead(nupkgPath);
+            using var zip = ZipFile.OpenRead(nupkgPath);
             var nuspecEntry = zip.Entries.FirstOrDefault(e => e.FullName.EndsWith(".nuspec", StringComparison.OrdinalIgnoreCase));
             if (nuspecEntry == null)
             {
-                _nugetCache[cacheKey] = new();
-                return new();
+                _nugetCache[cacheKey] = new List<(string Id, string Version)>();
+                return new List<(string Id, string Version)>();
             }
 
             using var stream = nuspecEntry.Open();
-            var doc = System.Xml.Linq.XDocument.Load(stream);
-            var ns = doc.Root?.Name.Namespace;
+            var doc = XDocument.Load(stream);
+            var ns = doc.Root?.Name.Namespace ?? throw new NullReferenceException("No doc root name.");
 
             // Prefer grouped dependencies by best TFM match; fall back to ungrouped
             var depsNode = doc.Descendants(ns + "dependencies").FirstOrDefault();
             if (depsNode == null)
             {
-                _nugetCache[cacheKey] = new();
-                return new();
+                _nugetCache[cacheKey] = new List<(string Id, string Version)>();
+                return new List<(string Id, string Version)>();
             }
 
             var groups = depsNode.Elements(ns + "group").ToList();
 
-            IEnumerable<System.Xml.Linq.XElement> chosenDeps;
+            IEnumerable<XElement> chosenDeps;
 
             if (groups.Count > 0)
             {
@@ -360,7 +388,7 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
                         .ToList();
 
                     chosenDeps = compatibleGroups.FirstOrDefault()?.Node.Elements(ns + "dependency")
-                                 ?? Enumerable.Empty<System.Xml.Linq.XElement>();
+                                 ?? Enumerable.Empty<XElement>();
                 }
             }
             else
@@ -386,62 +414,9 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         }
         catch
         {
-            _nugetCache[cacheKey] = new();
-            return new();
+            _nugetCache[cacheKey] = new List<(string Id, string Version)>();
+            return new List<(string Id, string Version)>();
         }
-    }
-
-    private void PrintPackageNode(
-        string prefix,
-        bool isLast,
-        string packageId,
-        string version,
-        string? tfm,
-        int depth,
-        int maxDepth,
-        HashSet<string> visited,
-        bool printSelf)
-    {
-        if (depth > maxDepth)
-            return;
-
-        var visitKey = $"{packageId}:{version}:{tfm}";
-        if (visited.Contains(visitKey))
-            return;
-
-        visited.Add(visitKey);
-
-        if (printSelf)
-        {
-            var branch = isLast ? "└── " : "├── ";
-            _output.WriteLine($"{prefix}{branch}{packageId} ({version})", ConsoleColor.DarkGray);
-        }
-
-        var deps = GetNugetDependencies(packageId, version, tfm);
-        if (deps.Count == 0)
-            return;
-
-        var subPrefix = prefix + (isLast ? "    " : "│   ");
-        for (int i = 0; i < deps.Count; i++)
-        {
-            var dep = deps[i];
-            PrintPackageNode(
-                prefix: subPrefix,
-                isLast: i == deps.Count - 1,
-                packageId: dep.Id,
-                version: dep.Version,
-                tfm: tfm,
-                depth: depth + 1,
-                maxDepth: maxDepth,
-                visited: visited,
-                printSelf: true);
-        }
-    }
-
-    private static string ResolveProjectTfm(ProjectInfo project)
-    {
-        if (string.IsNullOrEmpty(project.TargetFramework)) Debugger.Break();
-        return project.TargetFramework;
     }
 
     private static int RankTfm(string tfm)
@@ -450,6 +425,7 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         tfm = tfm.ToLowerInvariant();
 
         // crude but practical ranking (higher is more specific/newer)
+        if (tfm.StartsWith("net10.0")) return 10000;
         if (tfm.StartsWith("net9.0")) return 9000;
         if (tfm.StartsWith("net8.0")) return 8000;
         if (tfm.StartsWith("net7.0")) return 7000;
@@ -469,7 +445,7 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         if (string.IsNullOrWhiteSpace(requestedTfm)) return true;
 
         // Very simple heuristic:
-        // prefer exact, else allow older groups that a newer TF can run against (netstandard etc).
+        // prefer exact, else allow older groups that a newer TF can run against (netstandard etc.).
         groupTfm = groupTfm.ToLowerInvariant();
         requestedTfm = requestedTfm.ToLowerInvariant();
 
@@ -482,8 +458,8 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         if (requestedTfm.StartsWith("net") && groupTfm.StartsWith("net"))
         {
             // compare major
-            int reqMajor = ParseNetMajor(requestedTfm);
-            int grpMajor = ParseNetMajor(groupTfm);
+            var reqMajor = ParseNetMajor(requestedTfm);
+            var grpMajor = ParseNetMajor(groupTfm);
             return grpMajor <= reqMajor; // allow older
         }
 
@@ -502,20 +478,22 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
             if (int.TryParse(rest.Split('.')[0], out var n)) return n;
             return 0;
         }
+
         if (tfm.StartsWith("netstandard"))
         {
             var rest = tfm.Substring("netstandard".Length);
             if (int.TryParse(rest.Split('.')[0], out var n)) return n;
             return 0;
         }
+
         if (tfm.StartsWith("net"))
         {
             var rest = tfm.Substring("net".Length);
             // net48 or net9.0
             if (rest.Contains(".")) rest = rest.Split('.')[0];
             if (int.TryParse(rest, out var n)) return n;
-            return 0;
         }
+
         return 0;
     }
 
@@ -544,35 +522,27 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         }
     }
 
-    // Read resolved packages from project.assets.json
-    private sealed class AssetsModel
-    {
-        public Dictionary<string, Dictionary<string, ResolvedEntry>> Targets { get; init; } = new();
-    }
-
-    private sealed class ResolvedEntry
-    {
-        public Dictionary<string, string>? Dependencies { get; init; } // id -> version
-    }
-
-    // Returns a dictionary: packageId => (version => children list)
     private Dictionary<string, Dictionary<string, List<(string Id, string Version)>>> LoadResolvedGraphFromAssets(string projectFilePath)
     {
         var assetsPath = Path.Combine(Path.GetDirectoryName(projectFilePath)!, "obj", "project.assets.json");
-        if (!File.Exists(assetsPath)) return new();
+        if (!File.Exists(assetsPath)) return new Dictionary<string, Dictionary<string, List<(string Id, string Version)>>>();
 
         var json = File.ReadAllText(assetsPath);
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        using var doc = JsonDocument.Parse(json);
 
         var root = doc.RootElement;
 
         if (!root.TryGetProperty("targets", out var targets))
-            return new();
+        {
+            return new Dictionary<string, Dictionary<string, List<(string Id, string Version)>>>();
+        }
 
         // choose the first target (or pick one matching your project.TargetFramework)
         var target = targets.EnumerateObject().FirstOrDefault();
-        if (target.Equals(default(System.Text.Json.JsonProperty)))
-            return new();
+        if (target.Equals(default(JsonProperty)))
+        {
+            return new Dictionary<string, Dictionary<string, List<(string Id, string Version)>>>();
+        }
 
         var map = new Dictionary<string, Dictionary<string, List<(string Id, string Version)>>>(StringComparer.OrdinalIgnoreCase);
 
@@ -592,67 +562,80 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
                     var depId = dep.Name;
                     var depVer = dep.Value.GetString() ?? "";
                     if (!string.IsNullOrWhiteSpace(depId) && !string.IsNullOrWhiteSpace(depVer))
+                    {
                         deps.Add((depId, depVer));
+                    }
                 }
             }
 
             if (!map.TryGetValue(id, out var byVersion))
             {
-                byVersion = new(StringComparer.OrdinalIgnoreCase);
+                byVersion = new Dictionary<string, List<(string Id, string Version)>>(StringComparer.OrdinalIgnoreCase);
                 map[id] = byVersion;
             }
+
             byVersion[ver] = deps;
         }
 
         return map;
     }
 
-    private void PrintPackageNodeResolvedFirst(
-        string prefix,
-        bool isLast,
-        string packageId,
-        string version,
-        Dictionary<string, Dictionary<string, List<(string Id, string Version)>>> resolvedGraph,
-        int depth,
-        int maxDepth,
-        HashSet<string> visited)
+    private void PrintPackageNodeResolvedFirst(string prefix, bool isLast, string packageId, string version, Dictionary<string, Dictionary<string, List<(string Id, string Version)>>> resolvedGraph, int depth, int maxDepth, HashSet<string> visited, bool printSelf)
     {
         if (depth > maxDepth) return;
 
         var visitKey = $"{packageId}:{version}";
-        if (visited.Contains(visitKey)) return;
-        visited.Add(visitKey);
+        var v = !visited.Add(visitKey);
 
-        var branch = isLast ? "└── " : "├── ";
-        _output.WriteLine($"{prefix}{branch}{packageId} ({version})", ConsoleColor.DarkGray);
-
-        // Prefer exact, resolved children from assets.json
-        List<(string Id, string Version)> children =
+        var children =
             resolvedGraph.TryGetValue(packageId, out var byVersion) && byVersion.TryGetValue(version, out var depsFromAssets)
                 ? depsFromAssets
-                : GetNugetDependencies(packageId, version, requestedTfm: null); // fallback to nuspec if not found
+                : GetNugetDependencies(packageId, version, null); // fallback to nuspec if not found
 
+        //var subPrefix = prefix + (isLast ? "YYYY" : "│YYY");
+        var subPrefix = prefix + (isLast ? "" : "│YYY");
+        if (printSelf)
+        {
+            var branch = isLast ? "└── " : "├── ";
+            _output.WriteLine($"{prefix}{branch}{packageId} ({version})", ConsoleColor.DarkGray);
+            if (v && children.Count != 0)
+            {
+                var vb = branch == "├── "
+                    ? "│   "
+                    : branch == "└── "
+                        ? "    "
+                        : branch;
+                _output.WriteLine($"{prefix}{vb}└── ...", ConsoleColor.DarkGray);
+            }
+            subPrefix = prefix + (isLast ? "    " : "│   ");
+        }
+
+        if (v) return;
+
+        // Prefer exact, resolved children from assets.json
         if (children.Count == 0) return;
 
-        var subPrefix = prefix + (isLast ? "    " : "│   ");
-        for (int i = 0; i < children.Count; i++)
+        children = children.OrderBy(x => x.Id).ToList();
+
+        for (var i = 0; i < children.Count; i++)
         {
             var dep = children[i];
-            PrintPackageNodeResolvedFirst(
-                subPrefix, i == children.Count - 1,
-                dep.Id, dep.Version,
-                resolvedGraph,
-                depth + 1, maxDepth, visited);
+            var last = i == children.Count - 1;
+            PrintPackageNodeResolvedFirst(subPrefix, last, dep.Id, dep.Version, resolvedGraph, depth + 1, maxDepth, visited, true);
         }
     }
 
     private static string GetDisplayName(GitRepositoryInfo repo)
     {
         if (repo == null)
+        {
             return "(unknown)";
+        }
 
         if (!string.IsNullOrWhiteSpace(repo.Name) && repo.Name != ".")
+        {
             return repo.Name;
+        }
 
         try
         {
