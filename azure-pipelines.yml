@@ -1,7 +1,7 @@
 trigger:
 - master
 
-name: 0.0.$(Rev:r)
+name: 0.0.12 #$(Rev:r)
 
 stages:
   - stage: Build
@@ -115,19 +115,20 @@ stages:
               script: |
                 choco install chocolatey --no-progress -y
 
-                $exe = Get-ChildItem "$(outputDir)/win-x64" -Filter *.exe -Recurse | Where-Object { $_.Name -ieq "$(exeName)" } | Select-Object -First 1
-                if (-not $exe) {
-                  Write-Host "Looking for EXE in: $(outputDir)/win-x64"
-                  Get-ChildItem "$(outputDir)/win-x64" -Recurse
-                  throw "EXE not found in output directory: $(outputDir)/win-x64"
+                $publishDir = "$(outputDir)/win-x64"
+                if (-not (Test-Path $publishDir)) {
+                  throw "Publish directory not found: $publishDir"
                 }
 
                 $temp = "$(Build.ArtifactStagingDirectory)/choco-temp"
                 $tools = "$temp/tools"
                 New-Item -ItemType Directory -Path $tools -Force | Out-Null
 
-                Copy-Item $exe.FullName -Destination $tools
-                Copy-Item "$(nuspecPath)" "$temp/depend.nuspec"
+                # Copy ALL published runtime files
+                Copy-Item -Path "$publishDir\*" -Destination $tools -Recurse -Force
+
+                # Copy nuspec
+                Copy-Item "$(nuspecPath)" "$temp/depend.nuspec" -Force
 
                 Push-Location $temp
                 choco pack depend.nuspec --version "$(Build.BuildNumber)" --out "$(chocoDir)"
