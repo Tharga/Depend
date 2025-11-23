@@ -42,7 +42,6 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
     // ---------------------------
     private void PrintRepoTreeDependencies(GitRepositoryInfo[] repos, string excludePattern, bool onlyPackable)
     {
-        // BuildRepositoryDependencyGraph returns Dictionary<GitRepositoryInfo, HashSet<GitRepositoryInfo>>
         var graph = BuildRepositoryDependencyGraph(repos);
 
         var roots = FindRepoRoots(repos, graph);
@@ -144,12 +143,21 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
 
         var allProjects = repos.SelectMany(r => r.Projects).ToList();
 
-        foreach (var repo in orderedRepos)
+        for (var index = 0; index < orderedRepos.Count; index++)
         {
+            var isRepoLast = index == orderedRepos.Count - 1;
+            var repo = orderedRepos[index];
             var repoName = GetDisplayName(repo);
-            _output.WriteLine($"├── {repoName}", ConsoleColor.Green);
+            if (isRepoLast)
+            {
+                _output.WriteLine($"└── {repoName}", ConsoleColor.Green);
+            }
+            else
+            {
+                _output.WriteLine($"├── {repoName}", ConsoleColor.Green);
+            }
 
-            var repoPrefix = "│   ";
+            var repoPrefix = isRepoLast ? "    " : "│   ";
             var projects = repo.Projects
                 .Where(p => ShouldInclude(p, excludePattern, onlyPackable))
                 .OrderBy(p => p.Name)
@@ -174,7 +182,6 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
                     if (!string.IsNullOrWhiteSpace(pkg.Name) && !string.IsNullOrWhiteSpace(pkg.Version))
                     {
                         var isPkgLast = k == packages.Count - 1;
-                        //var childPrefix = pkgPrefix + (isPkgLast ? "    " : "│   ");
                         var childPrefix = pkgPrefix + (isPkgLast ? "" : "│   ");
                         PrintPackageNodeResolvedFirst(childPrefix, true, pkg.Name, pkg.Version, resolvedGraph, 1, 10, visited, false);
                     }
@@ -513,18 +520,6 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         }
     }
 
-    // Read resolved packages from project.assets.json
-    //private sealed class AssetsModel
-    //{
-    //    public Dictionary<string, Dictionary<string, ResolvedEntry>> Targets { get; init; } = new();
-    //}
-
-    //private sealed class ResolvedEntry
-    //{
-    //    public Dictionary<string, string>? Dependencies { get; init; } // id -> version
-    //}
-
-    // Returns a dictionary: packageId => (version => children list)
     private Dictionary<string, Dictionary<string, List<(string Id, string Version)>>> LoadResolvedGraphFromAssets(string projectFilePath)
     {
         var assetsPath = Path.Combine(Path.GetDirectoryName(projectFilePath)!, "obj", "project.assets.json");
@@ -606,7 +601,6 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
 
         if (children.Count == 0) return;
 
-        //var subPrefix = prefix + (isLast ? "    " : "│   ");
         for (var i = 0; i < children.Count; i++)
         {
             var dep = children[i];
