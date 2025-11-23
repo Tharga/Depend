@@ -161,9 +161,22 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
 
                     if (!string.IsNullOrWhiteSpace(pkg.Name) && !string.IsNullOrWhiteSpace(pkg.Version))
                     {
-                        var subPrefix = pkgPrefix + (k == packages.Count - 1 ? "    " : "│   ");
-                        // recurse using resolved graph (accurate), fallback to nuspec if not present
-                        PrintPackageNodeResolvedFirst(subPrefix, true, pkg.Name, pkg.Version, resolvedGraph, depth: 1, maxDepth: 10, visited);
+                        bool isPkgLast = k == packages.Count - 1;
+                        string childPrefix = pkgPrefix + (isPkgLast ? "    " : "│   ");
+
+                        PrintPackageNodeResolvedFirst(
+                            childPrefix,
+                            true,             // <-- always treat first dependency level as LAST
+                            pkg.Name,
+                            pkg.Version,
+                            resolvedGraph,
+                            1,
+                            10,
+                            visited,
+                            false
+                        );
+
+
                     }
                 }
             }
@@ -616,7 +629,8 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         Dictionary<string, Dictionary<string, List<(string Id, string Version)>>> resolvedGraph,
         int depth,
         int maxDepth,
-        HashSet<string> visited)
+        HashSet<string> visited,
+        bool printSelf)
     {
         if (depth > maxDepth) return;
 
@@ -624,8 +638,11 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
         if (visited.Contains(visitKey)) return;
         visited.Add(visitKey);
 
-        var branch = isLast ? "└── " : "├── ";
-        _output.WriteLine($"{prefix}{branch}{packageId} ({version})", ConsoleColor.DarkGray);
+        if (printSelf)
+        {
+            var branch = isLast ? "└── " : "├── ";
+            _output.WriteLine($"{prefix}{branch}{packageId} ({version})", ConsoleColor.DarkGray);
+        }
 
         // Prefer exact, resolved children from assets.json
         List<(string Id, string Version)> children =
@@ -643,7 +660,7 @@ internal class OutputTreeService : OutputBase, IOutputTreeService
                 subPrefix, i == children.Count - 1,
                 dep.Id, dep.Version,
                 resolvedGraph,
-                depth + 1, maxDepth, visited);
+                depth + 1, maxDepth, visited, true);
         }
     }
 
