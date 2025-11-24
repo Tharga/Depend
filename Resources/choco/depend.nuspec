@@ -13,20 +13,17 @@
 		<description>
 			Depend is a command-line tool that analyzes and visualizes dependencies across multiple .NET Git repositories.
 			It helps developers identify outdated NuGet packages and determine the correct build or update order for projects.
-			Depend also identifies redundant package dependencies and can generate dependency graphs or update plans.
 		</description>
 
 		<projectUrl>https://github.com/Tharga/Depend</projectUrl>
+		<projectSourceUrl>https://github.com/Tharga/Depend</projectSourceUrl>
 		<licenseUrl>https://github.com/Tharga/Depend/blob/master/LICENSE</licenseUrl>
 		<iconUrl>https://raw.githubusercontent.com/Tharga/Depend/master/Resources/icon.png</iconUrl>
 		<requireLicenseAcceptance>false</requireLicenseAcceptance>
 		<releaseNotes>https://github.com/Tharga/Depend/releases</releaseNotes>
 		<docsUrl>https://github.com/Tharga/Depend/wiki</docsUrl>
 		<bugTrackerUrl>https://github.com/Tharga/Depend/issues</bugTrackerUrl>
-
-		<tags>
-			cli dotnet dependencies nuget analyzer visualization build-order dependency-graph
-		</tags>
+		<tags>cli dotnet dependencies nuget analyzer visualization build-order dependency-graph</tags>
 	</metadata>
 
 </package>
