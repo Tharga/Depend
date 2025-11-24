@@ -10,6 +10,7 @@ services.AddTransient<IOutputService, OutputService>();
 services.AddTransient<IOutputTreeService, OutputTreeService>();
 services.AddTransient<IOutoutListService, OutoutListService>();
 services.AddTransient<IOutputDependencyService, OutputDependencyService>();
+services.AddTransient<IFileService, FileService>();
 services.AddTransient<IProjectService, ProjectService>();
 services.AddTransient<ICommandService, CommandService>();
 services.AddTransient<IPathService, PathService>();

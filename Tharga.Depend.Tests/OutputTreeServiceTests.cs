@@ -3,13 +3,14 @@ using FluentAssertions;
 using Moq;
 using Moq.AutoMock;
 using Tharga.Depend.Features.Output;
+using Tharga.Depend.Tests.Framework;
 using Xunit;
 
 namespace Tharga.Depend.Tests;
 
 public class OutputTreeServiceTests
 {
-    [Theory(Skip = "Fix")]
+    [Theory]
     [MemberData(nameof(RepoOutputData))]
     public void RepoOutputWithNoProjects(ViewMode viewMode, int repoCount)
     {
@@ -46,7 +47,7 @@ public class OutputTreeServiceTests
         }
     }
 
-    [Theory(Skip = "Fix")]
+    [Theory]
     [MemberData(nameof(RepoOutputData))]
     public void RepoOutputWithOneProject(ViewMode viewMode, int repoCount)
     {
@@ -91,7 +92,7 @@ public class OutputTreeServiceTests
         }
     }
 
-    [Theory(Skip = "Fix")]
+    [Theory]
     [MemberData(nameof(RepoOutputData))]
     public void RepoOutputWithOneProjectAndOnePckageLevel(ViewMode viewMode, int repoCount)
     {

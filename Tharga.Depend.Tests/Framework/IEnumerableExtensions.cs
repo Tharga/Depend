@@ -1,4 +1,4 @@
-﻿namespace Tharga.Depend.Tests;
+﻿namespace Tharga.Depend.Tests.Framework;
 
 internal static class IEnumerableExtensions
 {

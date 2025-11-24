@@ -1,2 +1,11 @@
 # Depend
-A command-line tool that analyzes and visualizes dependencies across multiple .NET Git repositories. Tharga.Depend helps you understand project relationships, detect outdated packages, and determine the correct build or update order.
+Analyze and visualize dependencies between .NET projects and NuGet packages.
+
+[![GitHub repo](https://img.shields.io/github/repo-size/Tharga/Depend?style=flat&logo=github&logoColor=red&label=Repo)](https://github.com/Tharga/Depend)
+[![GitHub repo Issues](https://img.shields.io/github/issues/Tharga/Depend?style=flat&logo=github&logoColor=red&label=Issues)](https://github.com/Tharga/Depend/issues?q=is%3Aopen)
+[![License](https://img.shields.io/badge/license-Apache-blue.svg)](LICENSE)
+
+Depend is a command-line tool that analyzes and visualizes dependencies across multiple .NET Git repositories.
+It helps developers identify outdated NuGet packages and determine the correct build or update order for projects.
+
+Read more about how it works in the [help](Tharga.Depend/HELP) section.

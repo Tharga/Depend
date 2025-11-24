@@ -2,7 +2,7 @@
 using Tharga.Depend.Features.Project;
 using Tharga.Depend.Features.Repo;
 
-namespace Tharga.Depend.Tests;
+namespace Tharga.Depend.Tests.Framework;
 
 internal static class SampleBuilder
 {
