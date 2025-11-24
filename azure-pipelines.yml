@@ -79,7 +79,7 @@ stages:
               zipAfterPublish: false
 
           - task: PowerShell@2
-            displayName: 'Prepare LICENSE and VERIFICATION for Chocolatey'
+            displayName: 'Prepare LICENSE for Chocolatey'
             inputs:
               targetType: 'inline'
               script: |
@@ -89,21 +89,14 @@ stages:
                 }
 
                 $licenseSource = "$(Build.SourcesDirectory)/LICENSE"
-                $verificationSource = "$(Build.SourcesDirectory)/VERIFICATION"
 
                 $licenseTarget = Join-Path $temp "LICENSE.txt"
-                $verificationTarget = Join-Path $temp "VERIFICATION.txt"
 
-                Write-Host "Preparing LICENSE.txt and VERIFICATION.txt..."
+                Write-Host "Preparing LICENSE.txt..."
 
                 if (Test-Path $licenseSource) {
                   Copy-Item $licenseSource -Destination $licenseTarget -Force
                   Write-Host "Copied LICENSE -> $licenseTarget"
-                }
-
-                if (Test-Path $verificationSource) {
-                  Copy-Item $verificationSource -Destination $verificationTarget -Force
-                  Write-Host "Copied VERIFICATION -> $verificationTarget"
                 }
 
                 ls $temp
@@ -135,12 +128,11 @@ stages:
                 Pop-Location
 
           - task: PowerShell@2
-            displayName: 'Clean up temporary LICENSE/VERIFICATION files'
+            displayName: 'Clean up temporary LICENSE files'
             inputs:
               targetType: 'inline'
               script: |
                 Remove-Item "$(Build.SourcesDirectory)/Resources/choco/LICENSE.txt" -ErrorAction SilentlyContinue
-                Remove-Item "$(Build.SourcesDirectory)/Resources/choco/VERIFICATION.txt" -ErrorAction SilentlyContinue
 
           - task: PublishBuildArtifacts@1
             displayName: 'Publish Artifacts'
