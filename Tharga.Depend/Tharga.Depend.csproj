@@ -6,6 +6,11 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+		<Company>Thargelion AB</Company>
+		<Product>Depend CLI</Product>
+		<Description>Dependency analysis tool for .NET repositories</Description>
+		<Authors>Daniel Bohlin</Authors>
+		<ApplicationIcon>Resources\icon.ico</ApplicationIcon>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -21,6 +26,10 @@
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="Tharga.Depend.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Resources\" />
 	</ItemGroup>
 
 </Project>

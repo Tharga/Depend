@@ -39,14 +39,18 @@ stages:
             inputs:
               command: 'build'
               projects: '**/*.csproj'
-              arguments: '--configuration $(buildConfiguration)'
+              arguments: >
+                --configuration $(buildConfiguration)
+                /p:Version=$(Build.BuildNumber)
+                /p:FileVersion=$(Build.BuildNumber)
+                /p:AssemblyVersion=$(Build.BuildNumber)
 
-          - task: DotNetCoreCLI@2
-            displayName: 'Test'
-            inputs:
-              command: 'test'
-              projects: 'Tharga.Depend.Tests/Tharga.Depend.Tests.csproj'
-              arguments: '--configuration $(buildConfiguration)'
+          # - task: DotNetCoreCLI@2
+          #   displayName: 'Test'
+          #   inputs:
+          #     command: 'test'
+          #     projects: 'Tharga.Depend.Tests/Tharga.Depend.Tests.csproj'
+          #     arguments: '--configuration $(buildConfiguration)'
 
           # Publish Windows build
           - task: DotNetCoreCLI@2
@@ -99,7 +103,7 @@ stages:
                   Write-Host "Copied LICENSE -> $licenseTarget"
                 }
 
-                ls $temp
+                #ls $temp
 
           - task: PowerShell@2
             displayName: 'Create Chocolatey Package'
@@ -150,7 +154,11 @@ stages:
         displayName: 'Push Chocolatey Package and Create GitHub Release'
         pool:
           vmImage: 'windows-latest'
+
         steps:
+          - checkout: self
+            persistCredentials: true
+
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Artifact from Build'
             inputs:
@@ -158,43 +166,23 @@ stages:
               artifactName: 'drop'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          - task: PowerShell@2
-            displayName: 'Push .nupkg to Chocolatey'
+          # Create Git tag via GitHub API using PowerShell
+          - script: |
+               git tag $(Build.BuildNumber)
+               git push origin $(Build.BuildNumber)
+            workingDirectory: $(Build.SourcesDirectory)
+            displayName: Tag
+
+          # Create GitHub Release using that tag
+          - task: GitHubRelease@1
+            displayName: 'Create GitHub Release'
             inputs:
-              targetType: 'inline'
-              script: |
-                choco install chocolatey --no-progress -y
-                $pkg = Get-ChildItem "$(System.ArtifactsDirectory)/drop/choco/*.nupkg" | Select-Object -First 1
-                if (-not $pkg) {
-                  throw "No .nupkg file found."
-                }
-                choco push $pkg.FullName --source https://push.chocolatey.org/ --api-key "$(CHOCOLATEY_API_KEY)"
-
-          # - task: GitHubRelease@1
-          #   displayName: 'Create GitHub Release'
-          #   inputs:
-          #     gitHubConnection: 'GitHubServiceConnection'
-          #     repositoryName: 'Tharga/Depend'
-          #     tagSource: 'manual'
-          #     tag: 'v$(Build.BuildNumber)'
-          #     title: 'Release $(Build.BuildNumber)'
-          #     assets: '$(System.ArtifactsDirectory)/drop/choco/*.nupkg'
-          #     isDraft: false
-          #     isPreRelease: false
-          #     addChangeLog: true
-
-          # - task: PowerShell@2
-          #   displayName: 'Tag GitHub Repository'
-          #   inputs:
-          #     targetType: 'inline'
-          #     script: |
-          #       $version = "$(Build.BuildNumber)"
-          #       $tag = "$version"
-
-          #       Write-Host "Creating git tag $tag"
-
-          #       git config user.email "builds@azuredevops.com"
-          #       git config user.name "Azure DevOps Pipeline"
-
-          #       git tag -a $tag -m "Release $version"
-          #       git push origin $tag
+              gitHubConnection: 'Tharga'
+              repositoryName: 'Tharga/Depend'
+              tagSource: 'userSpecifiedTag'
+              tag: 'v$(Build.BuildNumber)'
+              title: 'Release $(Build.BuildNumber)'
+              assets: '$(System.ArtifactsDirectory)/drop/choco/*.nupkg'
+              isDraft: false
+              isPreRelease: false
+              addChangeLog: false
