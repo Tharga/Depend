@@ -8,7 +8,7 @@ Analyze and visualize dependencies between .NET projects and NuGet packages.
 Depend is a command-line tool that analyzes and visualizes dependencies across multiple .NET Git repositories.
 It helps developers identify outdated NuGet packages and determine the correct build or update order for projects.
 
-Read more about how it works in the [help](Tharga.Depend/HELP) section.
+Read more about how it works in the [help](Tharga.Depend/Resources/HELP) section.
 
 ### Installation
 This package can be installed via chocolatey with the command `choco install depend`.
