@@ -45,12 +45,12 @@ stages:
                 /p:FileVersion=$(Build.BuildNumber)
                 /p:AssemblyVersion=$(Build.BuildNumber)
 
-          # - task: DotNetCoreCLI@2
-          #   displayName: 'Test'
-          #   inputs:
-          #     command: 'test'
-          #     projects: 'Tharga.Depend.Tests/Tharga.Depend.Tests.csproj'
-          #     arguments: '--configuration $(buildConfiguration)'
+          - task: DotNetCoreCLI@2
+            displayName: 'Test'
+            inputs:
+              command: 'test'
+              projects: 'Tharga.Depend.Tests/Tharga.Depend.Tests.csproj'
+              arguments: '--configuration $(buildConfiguration)'
 
           # Publish Windows build
           - task: DotNetCoreCLI@2
@@ -83,7 +83,7 @@ stages:
               zipAfterPublish: false
 
           - task: PowerShell@2
-            displayName: 'Prepare LICENSE for Chocolatey'
+            displayName: 'Prepare LICENSE and VERIFICATION for Chocolatey'
             inputs:
               targetType: 'inline'
               script: |
@@ -101,6 +101,16 @@ stages:
                 if (Test-Path $licenseSource) {
                   Copy-Item $licenseSource -Destination $licenseTarget -Force
                   Write-Host "Copied LICENSE -> $licenseTarget"
+                }
+
+                $verificationSource = "$(Build.SourcesDirectory)/Resources/choco/VERIFICATION.txt"
+                $verificationTarget = Join-Path $temp "VERIFICATION.txt"
+
+                if (Test-Path $verificationSource) {
+                    Copy-Item $verificationSource -Destination $verificationTarget -Force
+                    Write-Host "Copied VERIFICATION.txt -> $verificationTarget"
+                } else {
+                    Write-Host "VERIFICATION.txt not found at $verificationSource"
                 }
 
                 #ls $temp
@@ -145,44 +155,44 @@ stages:
               ArtifactName: 'drop'
               publishLocation: 'Container'
 
-  - stage: Release
-    displayName: 'Release to Chocolatey and GitHub'
-    dependsOn: Build
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
-    jobs:
-      - job: ReleaseJob
-        displayName: 'Push Chocolatey Package and Create GitHub Release'
-        pool:
-          vmImage: 'windows-latest'
+  # - stage: Release
+  #   displayName: 'Release to Chocolatey and GitHub'
+  #   dependsOn: Build
+  #   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  #   jobs:
+  #     - job: ReleaseJob
+  #       displayName: 'Push Chocolatey Package and Create GitHub Release'
+  #       pool:
+  #         vmImage: 'windows-latest'
 
-        steps:
-          - checkout: self
-            persistCredentials: true
+  #       steps:
+  #         - checkout: self
+  #           persistCredentials: true
 
-          - task: DownloadBuildArtifacts@0
-            displayName: 'Download Artifact from Build'
-            inputs:
-              buildType: 'current'
-              artifactName: 'drop'
-              downloadPath: '$(System.ArtifactsDirectory)'
+  #         - task: DownloadBuildArtifacts@0
+  #           displayName: 'Download Artifact from Build'
+  #           inputs:
+  #             buildType: 'current'
+  #             artifactName: 'drop'
+  #             downloadPath: '$(System.ArtifactsDirectory)'
 
-          # Create Git tag via GitHub API using PowerShell
-          - script: |
-               git tag $(Build.BuildNumber)
-               git push origin $(Build.BuildNumber)
-            workingDirectory: $(Build.SourcesDirectory)
-            displayName: Tag
+  #         # Create Git tag via GitHub API using PowerShell
+  #         - script: |
+  #              git tag $(Build.BuildNumber)
+  #              git push origin $(Build.BuildNumber)
+  #           workingDirectory: $(Build.SourcesDirectory)
+  #           displayName: Tag
 
-          # Create GitHub Release using that tag
-          - task: GitHubRelease@1
-            displayName: 'Create GitHub Release'
-            inputs:
-              gitHubConnection: 'Tharga'
-              repositoryName: 'Tharga/Depend'
-              tagSource: 'userSpecifiedTag'
-              tag: 'v$(Build.BuildNumber)'
-              title: 'Release $(Build.BuildNumber)'
-              assets: '$(System.ArtifactsDirectory)/drop/choco/*.nupkg'
-              isDraft: false
-              isPreRelease: false
-              addChangeLog: false
+  #         # Create GitHub Release using that tag
+  #         - task: GitHubRelease@1
+  #           displayName: 'Create GitHub Release'
+  #           inputs:
+  #             gitHubConnection: 'Tharga'
+  #             repositoryName: 'Tharga/Depend'
+  #             tagSource: 'userSpecifiedTag'
+  #             tag: 'v$(Build.BuildNumber)'
+  #             title: 'Release $(Build.BuildNumber)'
+  #             assets: '$(System.ArtifactsDirectory)/drop/choco/*.nupkg'
+  #             isDraft: false
+  #             isPreRelease: false
+  #             addChangeLog: false
