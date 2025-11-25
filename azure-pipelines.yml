@@ -155,44 +155,56 @@ stages:
               ArtifactName: 'drop'
               publishLocation: 'Container'
 
-  # - stage: Release
-  #   displayName: 'Release to Chocolatey and GitHub'
-  #   dependsOn: Build
-  #   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
-  #   jobs:
-  #     - job: ReleaseJob
-  #       displayName: 'Push Chocolatey Package and Create GitHub Release'
-  #       pool:
-  #         vmImage: 'windows-latest'
+  - stage: Release
+    displayName: 'Release to Chocolatey and GitHub'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+    jobs:
+      - job: ReleaseJob
+        displayName: 'Push Chocolatey Package and Create GitHub Release'
+        pool:
+          vmImage: 'windows-latest'
 
-  #       steps:
-  #         - checkout: self
-  #           persistCredentials: true
+        steps:
+          - checkout: self
+            persistCredentials: true
 
-  #         - task: DownloadBuildArtifacts@0
-  #           displayName: 'Download Artifact from Build'
-  #           inputs:
-  #             buildType: 'current'
-  #             artifactName: 'drop'
-  #             downloadPath: '$(System.ArtifactsDirectory)'
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Artifact from Build'
+            inputs:
+              buildType: 'current'
+              artifactName: 'drop'
+              downloadPath: '$(System.ArtifactsDirectory)'
 
-  #         # Create Git tag via GitHub API using PowerShell
-  #         - script: |
-  #              git tag $(Build.BuildNumber)
-  #              git push origin $(Build.BuildNumber)
-  #           workingDirectory: $(Build.SourcesDirectory)
-  #           displayName: Tag
+          - task: PowerShell@2
+            displayName: 'Push .nupkg to Chocolatey'
+            inputs:
+              targetType: 'inline'
+              script: |
+                choco install chocolatey --no-progress -y
+                $pkg = Get-ChildItem "$(System.ArtifactsDirectory)/drop/choco/*.nupkg" | Select-Object -First 1
+                if (-not $pkg) {
+                  throw "No .nupkg file found."
+                }
+                choco push $pkg.FullName --source https://push.chocolatey.org/ --api-key "$(CHOCOLATEY_API_KEY)"
 
-  #         # Create GitHub Release using that tag
-  #         - task: GitHubRelease@1
-  #           displayName: 'Create GitHub Release'
-  #           inputs:
-  #             gitHubConnection: 'Tharga'
-  #             repositoryName: 'Tharga/Depend'
-  #             tagSource: 'userSpecifiedTag'
-  #             tag: 'v$(Build.BuildNumber)'
-  #             title: 'Release $(Build.BuildNumber)'
-  #             assets: '$(System.ArtifactsDirectory)/drop/choco/*.nupkg'
-  #             isDraft: false
-  #             isPreRelease: false
-  #             addChangeLog: false
+          # Create Git tag via GitHub API using PowerShell
+          # - script: |
+          #      git tag $(Build.BuildNumber)
+          #      git push origin $(Build.BuildNumber)
+          #   workingDirectory: $(Build.SourcesDirectory)
+          #   displayName: Tag
+
+          # Create GitHub Release using that tag
+          - task: GitHubRelease@1
+            displayName: 'Create GitHub Release'
+            inputs:
+              gitHubConnection: 'Tharga'
+              repositoryName: 'Tharga/Depend'
+              tagSource: 'userSpecifiedTag'
+              tag: 'v$(Build.BuildNumber)'
+              title: 'Release $(Build.BuildNumber)'
+              assets: '$(System.ArtifactsDirectory)/drop/choco/*.nupkg'
+              isDraft: false
+              isPreRelease: false
+              addChangeLog: false

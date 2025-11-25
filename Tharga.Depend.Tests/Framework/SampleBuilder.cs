@@ -14,7 +14,7 @@ internal static class SampleBuilder
         {
             yield return new GitRepositoryInfo
             {
-                Name = faker.Company.CompanyName(),
+                Name = $"{faker.Company.CompanyName()}-{Guid.NewGuid()}",
                 Path = faker.System.DirectoryPath(),
                 Projects = BuildProjects(projectCount, packageCount).ToArray()
             };

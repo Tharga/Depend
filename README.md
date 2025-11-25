@@ -11,5 +11,5 @@ It helps developers identify outdated NuGet packages and determine the correct b
 Read more about how it works in the [help](Tharga.Depend/HELP) section.
 
 ### Installation
-This package can be installed via chocolatey with the command `choco install depend --version 0.0.12`.
+This package can be installed via chocolatey with the command `choco install depend`.
 Read more about this at [chocolatey](https://community.chocolatey.org/packages/depend).

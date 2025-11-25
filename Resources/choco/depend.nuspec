@@ -4,9 +4,8 @@
 		<id>depend</id>
 		<version>0.0.0</version>
 		<title>Depend</title>
-
-		<authors>Daniel Bohlin</authors>
 		<owners>Thargelion AB</owners>
+		<authors>Daniel Bohlin</authors>
 
 		<summary>Analyze and visualize dependencies between .NET projects and NuGet packages.</summary>
 
