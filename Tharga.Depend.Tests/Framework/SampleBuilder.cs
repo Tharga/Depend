@@ -29,7 +29,7 @@ internal static class SampleBuilder
         {
             yield return new ProjectInfo
             {
-                Name = faker.Company.CompanyName(),
+                Name = $"{faker.Company.CompanyName()}-{Guid.NewGuid()}",
                 Path = faker.System.DirectoryPath(),
                 TargetFramework = null,
                 PackageId = null,
@@ -46,7 +46,7 @@ internal static class SampleBuilder
         {
             yield return new PackageInfo
             {
-                Name = faker.Company.CompanyName(),
+                Name = $"{faker.Company.CompanyName()}-{Guid.NewGuid()}",
                 Path = faker.System.DirectoryPath(),
                 Type = PackageType.Project,
                 PackageId = null,

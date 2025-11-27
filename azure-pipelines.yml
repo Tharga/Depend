@@ -1,7 +1,7 @@
 trigger:
 - master
 
-name: 0.0.12 #$(Rev:r)
+name: 0.0.6 #$(Rev:r)
 
 stages:
   - stage: Build
@@ -207,4 +207,4 @@ stages:
               assets: '$(System.ArtifactsDirectory)/drop/choco/*.nupkg'
               isDraft: false
               isPreRelease: false
-              addChangeLog: false
+              addChangeLog: true
