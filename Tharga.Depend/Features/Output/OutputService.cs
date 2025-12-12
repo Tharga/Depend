@@ -31,7 +31,9 @@ internal class OutputService : IOutputService
 
         Console.WriteLine($"{assemblyName?.Name} version {version} by Thargelion AB.");
         Console.WriteLine();
-        var text = _fileService.ReadAllText("Resources\\HELP");
+
+        var helpPath = Path.Combine(AppContext.BaseDirectory, "Resources", "HELP");
+        var text = File.ReadAllText(helpPath);
         Console.WriteLine(text);
     }
 }
