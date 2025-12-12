@@ -1,7 +1,7 @@
 trigger:
 - master
 
-name: 0.0.6 #$(Rev:r)
+name: 0.0.12 #$(Rev:r)
 
 stages:
   - stage: Build
