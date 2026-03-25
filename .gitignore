@@ -98,3 +98,4 @@ _ReSharper.*
 /Tharga.Florida.Client/Releases/*
 /.NCrunch_*/*.executiontimes.cache
 /choco-temp/**
+/.claude/settings.local.json

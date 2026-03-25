@@ -1,8 +1,6 @@
 trigger:
 - master
 
-name: 0.0.12 #$(Rev:r)
-
 stages:
   - stage: Build
     displayName: 'Build and Pack'
@@ -20,6 +18,10 @@ stages:
           chocoDir: '$(Build.ArtifactStagingDirectory)/choco'
 
         steps:
+          - template: buildnumber.yml
+            parameters:
+              majorMinor: '0.1'
+
           - task: UseDotNet@2
             displayName: 'Use .NET 10'
             inputs:
