@@ -12,7 +12,7 @@ Two features are planned. They are independent and will be implemented on separa
 - [x] 1. Update `azure-pipelines.yml` to use `buildnumber.yml` as a template step with `majorMinor: '0.1'`
 - [x] 2. Remove the hardcoded `name: 0.0.12` line
 - [x] 3. Verify the version variables (`Build.BuildNumber`) still flow to build, publish, and Chocolatey pack steps
-- [ ] 4. Commit: `feat: use buildnumber.yml template for auto-incrementing versions`
+- [x] 4. Commit: `feat: use buildnumber.yml template for auto-incrementing versions` (52f174f)
 
 ---
 
@@ -36,5 +36,5 @@ Two features are planned. They are independent and will be implemented on separa
 ---
 
 ## Status
-- Neither feature has been started yet
-- Awaiting confirmation to begin
+- Feature 1 (build-numbers) is complete on branch `feature/build-numbers`, ready for review/merge
+- Feature 2 (package-analysis) has not been started yet
