@@ -66,23 +66,26 @@ stages:
                 --runtime win-x64
                 --self-contained true
                 /p:PublishSingleFile=false
+                /p:Version=$(Build.BuildNumber)
+                /p:FileVersion=$(Build.BuildNumber)
+                /p:AssemblyVersion=$(Build.BuildNumber)
                 --output $(outputDir)/win-x64
               zipAfterPublish: false
 
           # Publish Linux build
-          - task: DotNetCoreCLI@2
-            displayName: 'Publish Linux build'
-            inputs:
-              command: 'publish'
-              publishWebProjects: false
-              projects: '$(projectPath)'
-              arguments: >
-                --configuration $(buildConfiguration)
-                --runtime linux-x64
-                --self-contained true
-                /p:PublishSingleFile=false
-                --output $(outputDir)/linux-x64
-              zipAfterPublish: false
+          # - task: DotNetCoreCLI@2
+          #   displayName: 'Publish Linux build'
+          #   inputs:
+          #     command: 'publish'
+          #     publishWebProjects: false
+          #     projects: '$(projectPath)'
+          #     arguments: >
+          #       --configuration $(buildConfiguration)
+          #       --runtime linux-x64
+          #       --self-contained true
+          #       /p:PublishSingleFile=false
+          #       --output $(outputDir)/linux-x64
+          #     zipAfterPublish: false
 
           - task: PowerShell@2
             displayName: 'Prepare LICENSE and VERIFICATION for Chocolatey'
